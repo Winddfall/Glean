@@ -1,0 +1,18 @@
+{
+  "name": "shizhi",
+  "version": "0.1.0",
+  "description": "拾知 —— Tabbit 脚本妙招：F1 自动记录 + 自动分析",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --format=iife --outfile=拾知.js",
+    "build:min": "esbuild src/index.ts --bundle --format=iife --minify --outfile=拾知.js",
+    "dev": "esbuild src/index.ts --bundle --format=iife --outfile=拾知.js --watch",
+    "test": "npm run build && node --test test/smoke.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLMBridge 对话指南"
+  short_description: "指导脚本正确使用 LLMBridge 处理文本与多模态内容"
+  default_prompt: "使用 $llm-bridge-chat-guidance 编写或审查基于 LLMBridge.chat() 的脚本。"
