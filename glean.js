@@ -103,7 +103,7 @@
     const title = document.title || "";
     const h1 = ((document.querySelector("h1") || {}).textContent || "").trim();
     const metaEl = document.querySelector('meta[name="description"]');
-    const meta = (metaEl ? metaEl.getAttribute("content") : "").trim();
+    const meta = (metaEl?.getAttribute("content") || "").trim();
     const text = extractMainText();
     return { url: location.href, origin: location.origin, title, h1, meta, text };
   }
@@ -161,8 +161,9 @@
       page.excerpt,
       "",
       "\u8F93\u51FA JSON\uFF08\u4E0D\u8981\u8F93\u51FA\u4EFB\u4F55\u5176\u4ED6\u5185\u5BB9\uFF09\uFF1A",
-      '{"relevant": true\u6216false, "goalId": "\u76EE\u6807id\u6216null", "summary": "80\u5B57\u4EE5\u5185\u9875\u9762\u6458\u8981", "keywords": ["\u5173\u952E\u8BCD"]}',
-      "\u89C4\u5219\uFF1AgoalId \u53EA\u80FD\u4ECE\u4E0A\u65B9\u5DE5\u4F5C\u76EE\u6807\u7684 id \u4E2D\u9009\u6700\u76F8\u5173\u7684\u4E00\u4E2A\uFF1B\u4E0E\u4EFB\u4F55\u76EE\u6807\u90FD\u65E0\u5173\u65F6 relevant=false\u3001goalId=null\uFF1B\u62FF\u4E0D\u51C6\u65F6 relevant=false\u3002"
+      '{"relevant": true\u6216false, "goalId": "\u76EE\u6807id\u6216null", "relevance": 0-100\u6574\u6570, "summary": "80\u5B57\u4EE5\u5185\u9875\u9762\u6458\u8981", "keywords": ["\u5173\u952E\u8BCD"], "findings": ["\u5173\u952E\u53D1\u73B01", "\u5173\u952E\u53D1\u73B02"], "notes": [{"topic": "\u4E3B\u9898", "content": "\u8BE5\u4E3B\u9898\u4E0B\u7684\u7B14\u8BB0\u5185\u5BB9", "relevance": 0-100}]}',
+      "\u89C4\u5219\uFF1AgoalId \u53EA\u80FD\u4ECE\u4E0A\u65B9\u5DE5\u4F5C\u76EE\u6807\u7684 id \u4E2D\u9009\u6700\u76F8\u5173\u7684\u4E00\u4E2A\uFF1B\u4E0E\u4EFB\u4F55\u76EE\u6807\u90FD\u65E0\u5173\u65F6 relevant=false\u3001goalId=null\u3001relevance \u4E3A0-60\uFF1B\u62FF\u4E0D\u51C6\u65F6 relevant=false\uFF1Brelevance \u8868\u793A\u8BE5\u9875\u9762\u5185\u5BB9\u4E0E\u5DE5\u4F5C\u76EE\u6807\u7684\u76F8\u5173\u7A0B\u5EA6\uFF0C0=\u5B8C\u5168\u65E0\u5173\uFF0C100=\u9AD8\u5EA6\u76F8\u5173\u3002",
+      "findings \u4E3A2-5\u6761\u5173\u952E\u53D1\u73B0\uFF0C\u6BCF\u6761\u4E00\u53E5\u8BDD\u6982\u62EC\u9875\u9762\u4E2D\u6709\u4EF7\u503C\u7684\u4FE1\u606F\u70B9\uFF1Bnotes \u4E3A\u6309\u4E3B\u9898\u62C6\u5206\u7684\u7ED3\u6784\u5316\u7B14\u8BB0\uFF0C\u6BCF\u4E2A\u4E3B\u9898\u5305\u542B topic(\u4E3B\u9898\u540D\u79F0)\u3001content(\u8BE5\u4E3B\u9898\u4E0B\u7684\u8BE6\u7EC6\u7B14\u8BB0\uFF0C2-3\u53E5\u8BDD) \u548C relevance(\u8BE5\u4E3B\u9898\u4E0E\u5DE5\u4F5C\u76EE\u6807\u7684\u76F8\u5173\u5EA60-100)\uFF1Bnotes \u6700\u591A4\u4E2A\u4E3B\u9898\u3002"
     ].filter(Boolean).join("\n");
   }
   function validateAnalysis(json, goals) {
@@ -172,11 +173,26 @@
     let relevant = obj.relevant === true || obj.relevant === "true";
     const goalId = typeof obj.goalId === "string" && ids.has(obj.goalId) ? obj.goalId : null;
     if (!goalId) relevant = false;
+    const relevanceRaw = Number(obj.relevance);
+    const relevance = Number.isFinite(relevanceRaw) ? Math.max(0, Math.min(100, Math.round(relevanceRaw))) : relevant ? 60 : 0;
+    const findings = Array.isArray(obj.findings) ? obj.findings.slice(0, 5).map((f) => truncate(String(f), 120)) : [];
+    const notes = Array.isArray(obj.notes) ? obj.notes.slice(0, 4).map((n) => {
+      const no = n ?? {};
+      const nr = Number(no.relevance);
+      return {
+        topic: truncate(typeof no.topic === "string" ? no.topic : "", 30),
+        content: truncate(typeof no.content === "string" ? no.content : "", 300),
+        relevance: Number.isFinite(nr) ? Math.max(0, Math.min(100, Math.round(nr))) : 0
+      };
+    }).filter((n) => n.topic && n.content) : [];
     return {
       relevant,
       goalId,
+      relevance,
       summary: truncate(typeof obj.summary === "string" ? obj.summary : "", 200),
-      keywords: Array.isArray(obj.keywords) ? obj.keywords.slice(0, 8).map(String) : []
+      keywords: Array.isArray(obj.keywords) ? obj.keywords.slice(0, 8).map(String) : [],
+      findings,
+      notes
     };
   }
 
@@ -232,6 +248,9 @@
     const res = validateAnalysis(parseJsonLoose(raw), goals);
     rec.summary = res.summary;
     rec.keywords = res.keywords;
+    rec.relevance = res.relevance;
+    rec.findings = res.findings;
+    rec.notes = res.notes;
     rec.category = res.relevant && res.goalId ? "goal:" + res.goalId : "slacking";
     const g = goals.find((x) => x.id === res.goalId);
     Panel.toast(res.relevant && g ? "\u5DF2\u5F52\u6863\u81F3\uFF1A" + g.title : "\u5DF2\u5F52\u5165\u6478\u9C7C", res.relevant && g ? "ok" : "idle");
@@ -274,7 +293,7 @@
     const hash = fnv1a(page.url.split("#")[0] + "|" + page.text.slice(0, 500));
     const recs = Store.read(K.records, []);
     const now = Date.now();
-    if (recs.some((r) => r.excerptHash === hash && now - r.capturedAt < settings().dedupeWindowMs)) return;
+    if (recs.some((r) => r.url === page.url)) return;
     const rec = {
       id: uid("r"),
       url: page.url,
@@ -326,11 +345,18 @@
   var CSS = `
 :host { all: initial; }
 * { box-sizing: border-box; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-.sz-fab { position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 4px 14px rgba(0,0,0,.14); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483000; color: #d97706; padding: 0; }
+.sz-dock { position: fixed; left: 0; top: 0; width: 40px; height: 40px; z-index: 2147483000; }
+.sz-fab { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 4px 14px rgba(0,0,0,.14); display: flex; align-items: center; justify-content: center; cursor: grab; color: #d97706; padding: 0; }
+.sz-fab.dragging { cursor: grabbing; }
 .sz-fab:hover { background: #fafafa; }
 .sz-fab.on { color: #16a34a; border-color: #bbf7d0; }
-.sz-panel { position: fixed; right: 16px; bottom: 64px; width: 360px; max-height: 70vh; background: #fff; border: 1px solid #e2e4e9; border-radius: 8px; box-shadow: 0 10px 32px rgba(0,0,0,.16); display: none; flex-direction: column; z-index: 2147483000; color: #1f2328; font-size: 13px; overflow: hidden; }
+.sz-pending { position: absolute; right: 48px; top: 10px; display: none; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 2px 8px rgba(0,0,0,.1); color: #6b7280; font-size: 11px; pointer-events: none; white-space: nowrap; }
+.sz-pending.on { display: inline-block; animation: sz-breathe 1.6s ease-in-out infinite; }
+@keyframes sz-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.sz-panel { position: absolute; right: 0; bottom: 48px; width: 360px; max-height: 70vh; background: #fff; border: 1px solid #e2e4e9; border-radius: 8px; box-shadow: 0 10px 32px rgba(0,0,0,.16); display: none; flex-direction: column; color: #1f2328; font-size: 13px; overflow: hidden; }
 .sz-panel.open { display: flex; }
+.sz-resize { position: absolute; top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 2; }
+.sz-resize svg { position: absolute; top: 3px; left: 3px; }
 .sz-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #eef0f3; }
 .sz-title { font-size: 14px; font-weight: 600; flex: 1; }
 .sz-mode { color: #6b7280; font-size: 12px; }
@@ -342,6 +368,7 @@
 .sz-tab { flex: 1; padding: 6px 0; text-align: center; border-radius: 6px; cursor: pointer; color: #6b7280; background: transparent; border: none; font-size: 13px; }
 .sz-tab.act { background: #f3f4f6; color: #111827; font-weight: 600; }
 .sz-body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 120px; }
+.sz-body.sz-animH { flex: none; overflow: hidden; transition: height .2s ease; }
 .sz-foot { padding: 8px 12px; border-top: 1px solid #eef0f3; display: flex; justify-content: space-between; align-items: center; color: #9ca3af; font-size: 11px; }
 .sz-clear { background: none; border: none; color: #9ca3af; font-size: 11px; cursor: pointer; padding: 0; }
 .sz-clear:hover { color: #dc2626; }
@@ -360,20 +387,63 @@
 .sz-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .sz-count { color: #9ca3af; font-weight: 400; font-size: 12px; }
 .sz-rec { padding: 6px 0; border-bottom: 1px dashed #f0f1f3; }
+.sz-rec-head { display: flex; align-items: flex-start; gap: 4px; }
+.sz-rec-main { flex: 1; min-width: 0; cursor: pointer; }
+.sz-rec-actions { display: flex; gap: 2px; flex: none; align-items: center; }
+.sz-rec.expanded .sz-rmeta { -webkit-line-clamp: unset; overflow: visible; }
+.sz-rec-detail { display: none; margin-top: 6px; padding: 8px; background: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.6; word-break: break-word; }
+.sz-rec.expanded .sz-rec-detail { display: block; }
+.sz-detail-sec { margin-top: 8px; }
+.sz-detail-sec:first-child { margin-top: 0; }
+.sz-detail-sec-title { font-size: 12px; font-weight: 600; color: #1f2328; margin-bottom: 4px; }
+.sz-detail-finding { display: flex; gap: 4px; padding: 2px 0; color: #4b5563; }
+.sz-detail-finding::before { content: "\u2022"; color: #9ca3af; flex: none; }
+.sz-detail-note { padding: 6px 8px; background: #fff; border-radius: 4px; border: 1px solid #eef0f3; margin-top: 4px; }
+.sz-detail-note-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.sz-detail-note-topic { font-weight: 600; color: #1f2328; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sz-detail-note-rel { font-size: 10px; padding: 1px 6px; border-radius: 999px; flex: none; color: #6b7280; background: #f3f4f6; }
+.sz-detail-note-content { color: #4b5563; font-size: 12px; }
+.sz-del-btn { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; color: #9ca3af; cursor: pointer; padding: 0; flex: none; }
+.sz-del-btn:hover { background: #fef2f2; color: #dc2626; }
+.sz-rel { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 5px; }
+.sz-rel-high { background: #8ba888; }
+.sz-rel-mid { background: #9ba5b4; }
+.sz-rel-low { background: #c4a59a; }
+.sz-rel-none { background: #d6d3d1; }
 .sz-rtitle { display: block; color: #1f2328; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sz-rtitle:hover { text-decoration: underline; color: #2563eb; }
 .sz-rmeta { color: #6b7280; font-size: 12px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sz-select { margin-top: 4px; font-size: 11px; color: #6b7280; border: 1px solid #e5e7eb; border-radius: 4px; max-width: 140px; background: #fff; }
 .sz-retry { margin-top: 4px; font-size: 11px; color: #dc2626; border: 1px solid #fecaca; border-radius: 4px; background: #fff; cursor: pointer; padding: 1px 8px; }
 .sz-retry:hover { background: #fef2f2; }
-.sz-toasts { position: fixed; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 2147483001; pointer-events: none; }
-.sz-toast { background: #166534; color: #f9fafb; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.2); max-width: 300px; }
+.sz-toasts { position: absolute; right: 48px; bottom: 0; width: max-content; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 1; pointer-events: none; }
+.sz-toast { background: #166534; color: #f9fafb; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.2); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transform: translateX(40px) scale(.85); transform-origin: right center; transition: transform .25s ease-out, opacity .25s ease-out; }
+.sz-toast.show { opacity: 1; transform: translateX(0) scale(1); }
+.sz-toast.hide { opacity: 0; transform: translateX(40px) scale(.85); transition-timing-function: ease-in; }
 .sz-toast.idle { background: #92400e; }
 .sz-toast.err { background: #b91c1c; }
+.sz-dock.flip-v .sz-panel { bottom: auto; top: 48px; }
+.sz-dock.flip-v .sz-toasts { bottom: auto; top: 0; }
+.sz-dock.flip-h .sz-panel { right: auto; left: 0; }
+.sz-dock.flip-h .sz-pending { right: auto; left: 48px; }
+.sz-dock.flip-h .sz-toasts { right: auto; left: 48px; align-items: flex-start; }
+.sz-dock.flip-h .sz-toast { transform: translateX(-40px) scale(.85); transform-origin: left center; }
+.sz-dock.flip-h .sz-toast.show { transform: translateX(0) scale(1); }
+.sz-dock.flip-h .sz-toast.hide { transform: translateX(-40px) scale(.85); }
+.sz-dock.flip-v .sz-resize { top: auto; bottom: 0; cursor: nesw-resize; }
+.sz-dock.flip-h .sz-resize { left: auto; right: 0; cursor: nesw-resize; }
+.sz-dock.flip-v.flip-h .sz-resize { cursor: nwse-resize; }
+.sz-dock.flip-h .sz-resize svg { left: auto; right: 3px; transform: scaleX(-1); }
+.sz-dock.flip-v .sz-resize svg { top: auto; bottom: 3px; transform: scaleY(-1); }
+.sz-dock.flip-v.flip-h .sz-resize svg { transform: scale(-1, -1); }
 `;
   var Panel = {
     tab: "goals",
     root: null,
+    pos: { x: 0, y: 0 },
+    suppressFabClick: false,
+    animTimer: 0,
+    panelSize: null,
     els: {},
     mount() {
       const host = document.createElement("div");
@@ -381,9 +451,12 @@
       const shadow = host.attachShadow({ mode: "open" });
       shadow.innerHTML = `
 <style>${CSS}</style>
+<div class="sz-dock">
 <div class="sz-toasts"></div>
 <button class="sz-fab" data-act="fab" title="\u62FE\u77E5">${ICONS.bulb}</button>
+<span class="sz-pending" data-role="pending">\u5206\u6790\u4E2D</span>
 <div class="sz-panel">
+  <div class="sz-resize" data-role="resize" title="\u62D6\u62FD\u8C03\u6574\u5927\u5C0F \xB7 \u53CC\u51FB\u6062\u590D\u9ED8\u8BA4"><svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 9 9 1M4 9 9 4M7 9 9 7" stroke="#d1d5db" stroke-width="1.2" stroke-linecap="round"/></svg></div>
   <div class="sz-head">
     <span class="sz-title">\u62FE\u77E5</span>
     <span class="sz-mode">\u5DE5\u4F5C\u6A21\u5F0F</span>
@@ -396,11 +469,15 @@
   </div>
   <div class="sz-body"></div>
   <div class="sz-foot"><span data-role="driver"></span><button class="sz-clear" data-act="clear">\u6E05\u7A7A\u6570\u636E</button></div>
+</div>
 </div>`;
       document.documentElement.appendChild(host);
       this.root = shadow;
       this.els = {
+        dock: shadow.querySelector(".sz-dock"),
         fab: shadow.querySelector(".sz-fab"),
+        resize: shadow.querySelector(".sz-resize"),
+        pending: shadow.querySelector('[data-role="pending"]'),
         panel: shadow.querySelector(".sz-panel"),
         body: shadow.querySelector(".sz-body"),
         toasts: shadow.querySelector(".sz-toasts"),
@@ -408,6 +485,20 @@
         driver: shadow.querySelector('[data-role="driver"]'),
         tabs: Array.from(shadow.querySelectorAll(".sz-tab"))
       };
+      const saved = Store.read(K.fabPos, null);
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) this.placeDock(saved.x, saved.y);
+      else this.placeDock(window.innerWidth - 56, window.innerHeight - 56);
+      addEventListener("resize", () => this.placeDock(this.pos.x, this.pos.y));
+      const psz = Store.read(K.panelSize, null);
+      if (psz && Number.isFinite(psz.w) && Number.isFinite(psz.h)) {
+        this.panelSize = {
+          w: clamp(psz.w, 280, Math.round(window.innerWidth * 0.9)),
+          h: clamp(psz.h, 240, Math.round(window.innerHeight * 0.8))
+        };
+        this.applyPanelSize();
+      }
+      this.initDrag();
+      this.initResize();
       shadow.addEventListener("click", (e) => this.onClick(e));
       shadow.addEventListener("change", (e) => this.onChange(e));
       shadow.addEventListener("keydown", (e) => {
@@ -419,15 +510,17 @@
       const btn = e.target.closest("[data-act]");
       if (!btn) return;
       const act = btn.dataset.act;
-      if (act === "fab") this.els.panel.classList.toggle("open");
-      else if (act === "close") this.els.panel.classList.remove("open");
-      else if (act === "tab") {
-        this.tab = btn.dataset.tab;
-        this.render();
-      } else if (act === "add-goal") this.addGoal();
+      if (act === "fab") {
+        if (!this.suppressFabClick) this.els.panel.classList.toggle("open");
+      } else if (act === "close") this.els.panel.classList.remove("open");
+      else if (act === "tab") this.switchTab(btn.dataset.tab);
+      else if (act === "add-goal") this.addGoal();
       else if (act === "toggle-goal") this.toggleGoal(btn.closest(".sz-grow").dataset.id);
       else if (act === "del-goal") this.delGoal(btn.closest(".sz-grow").dataset.id);
       else if (act === "retry") this.retryRecord(btn.dataset.rid);
+      else if (act === "expand") {
+        btn.closest(".sz-rec").classList.toggle("expanded");
+      } else if (act === "del-record") this.delRecord(btn.dataset.rid);
       else if (act === "clear") this.clearAll();
     },
     onChange(e) {
@@ -473,6 +566,16 @@
       Store.write(K.goals, Store.read(K.goals, []).filter((x) => x.id !== id));
       this.render();
     },
+    delRecord(rid) {
+      const recs = Store.read(K.records, []);
+      const idx = recs.findIndex((r) => r.id === rid);
+      if (idx < 0) return;
+      recs.splice(idx, 1);
+      Store.write(K.records, recs);
+      const q = Store.read(K.queue, []);
+      Store.write(K.queue, q.filter((item) => item.recordId !== rid));
+      this.render();
+    },
     retryRecord(rid) {
       const recs = Store.read(K.records, []);
       const rec = recs.find((r) => r.id === rid);
@@ -491,11 +594,34 @@
       Object.values(K).forEach((k) => Store.del(k));
       this.render();
     },
+    switchTab(tab) {
+      if (tab === this.tab) return;
+      this.tab = tab;
+      if (this.panelSize) {
+        this.render();
+        return;
+      }
+      const body = this.els.body;
+      const prevH = body.offsetHeight;
+      const chrome = this.els.panel.offsetHeight - prevH;
+      this.render();
+      const newH = Math.max(120, Math.min(body.scrollHeight, Math.round(window.innerHeight * 0.7) - chrome));
+      clearTimeout(this.animTimer);
+      body.classList.add("sz-animH");
+      body.style.height = prevH + "px";
+      void body.offsetHeight;
+      body.style.height = newH + "px";
+      this.animTimer = setTimeout(() => {
+        body.classList.remove("sz-animH");
+        body.style.height = "";
+      }, 220);
+    },
     render() {
       if (!this.root) return;
       const st = getState();
       this.els.workmode.checked = !!st.workMode;
       this.els.fab.classList.toggle("on", !!st.workMode);
+      this.els.pending.classList.toggle("on", Store.read(K.queue, []).length > 0);
       this.els.driver.textContent = "\u5B58\u50A8\uFF1A" + Store.driverLabel();
       this.els.tabs.forEach((t) => t.classList.toggle("act", t.dataset.tab === this.tab));
       if (this.tab === "goals") this.renderGoals();
@@ -551,10 +677,24 @@
         html += `<div class="sz-sec"><span class="sz-dot" style="background:${g.color}"></span>${esc(g.name)}<span class="sz-count">${g.items.length}</span></div>`;
         html += g.items.slice(0, 50).map((r) => {
           const movable = r.category === "slacking" || String(r.category).startsWith("goal:");
+          const findingsHtml = r.findings?.length ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">\u{1F4A1} \u5173\u952E\u53D1\u73B0</div>${r.findings.map((f) => `<div class="sz-detail-finding">${esc(f)}</div>`).join("")}</div>` : "";
+          const notesHtml = r.notes?.length ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">\u{1F4D2} \u63D0\u53D6\u7B14\u8BB0</div>${r.notes.map((n) => `<div class="sz-detail-note"><div class="sz-detail-note-head"><span class="sz-detail-note-topic">${esc(n.topic)}</span><span class="sz-detail-note-rel">\u76F8\u5173\u5EA6 ${n.relevance}%</span></div><div class="sz-detail-note-content">${esc(n.content)}</div></div>`).join("")}</div>` : "";
+          const relCls = r.relevance == null ? "sz-rel-none" : r.relevance >= 60 ? "sz-rel-high" : r.relevance >= 30 ? "sz-rel-mid" : "sz-rel-low";
+          const relTitle = r.relevance == null ? "\u672A\u5206\u6790" : `\u76F8\u5173\u5EA6 ${r.relevance}/100`;
           return `
       <div class="sz-rec" data-id="${esc(r.id)}">
-        <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)}">${esc(r.title || r.url)}</a>
-        <div class="sz-rmeta">${fmtTime(r.capturedAt)} \xB7 ${esc(r.summary || r.preview || "")}</div>
+        <div class="sz-rec-head">
+          <span class="sz-rel ${relCls}" title="${relTitle}"></span>
+          <div class="sz-rec-main" data-act="expand">
+            <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)}">${esc(r.title || r.url)}</a>
+            <div class="sz-rmeta">${fmtTime(r.capturedAt)} \xB7 ${esc(r.summary || r.preview || "")}</div>
+          </div>
+          <div class="sz-rec-actions">
+            ${r.category === "pending" ? '<span class="sz-badge">\u5206\u6790\u4E2D</span>' : ""}
+            <button class="sz-del-btn" data-act="del-record" data-rid="${esc(r.id)}" title="\u5220\u9664">${ICONS.x}</button>
+          </div>
+        </div>
+        <div class="sz-rec-detail">${findingsHtml}${notesHtml}${r.category === "pending" ? "\u6B63\u5728\u5206\u6790\u4E2D\uFF0C\u8BF7\u7A0D\u7B49\u7247\u523B~" : ""}</div>
         ${movable ? selectHtml(r) : ""}
         ${r.category === "error" && r.excerpt ? `<button class="sz-retry" data-act="retry" data-rid="${esc(r.id)}">\u91CD\u8BD5</button>` : ""}
       </div>`;
@@ -562,13 +702,100 @@
       }
       this.els.body.innerHTML = html || '<div class="sz-empty">\u6682\u65E0\u8BB0\u5F55</div>';
     },
+    applyPanelSize() {
+      const p = this.els.panel;
+      if (this.panelSize) {
+        p.style.width = this.panelSize.w + "px";
+        p.style.height = this.panelSize.h + "px";
+        p.style.maxHeight = "80vh";
+      } else {
+        p.style.width = "";
+        p.style.height = "";
+        p.style.maxHeight = "";
+      }
+    },
+    initResize() {
+      this.els.resize.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        const rect = this.els.panel.getBoundingClientRect();
+        const sw = rect.width, sh = rect.height;
+        const dirX = this.els.dock.classList.contains("flip-h") ? 1 : -1;
+        const dirY = this.els.dock.classList.contains("flip-v") ? 1 : -1;
+        const onMove = (ev) => {
+          const w = clamp(Math.round(sw + (ev.clientX - sx) * dirX), 280, Math.round(window.innerWidth * 0.9));
+          const h = clamp(Math.round(sh + (ev.clientY - sy) * dirY), 240, Math.round(window.innerHeight * 0.8));
+          this.panelSize = { w, h };
+          this.applyPanelSize();
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          if (this.panelSize) Store.write(K.panelSize, this.panelSize);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      this.els.resize.addEventListener("dblclick", () => {
+        this.panelSize = null;
+        Store.del(K.panelSize);
+        this.applyPanelSize();
+      });
+    },
+    placeDock(x, y) {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      x = clamp(x, 0, Math.max(0, vw - 40));
+      y = clamp(y, 0, Math.max(0, vh - 40));
+      this.pos = { x, y };
+      const dock = this.els.dock;
+      dock.style.left = x + "px";
+      dock.style.top = y + "px";
+      dock.classList.toggle("flip-v", y + 20 < vh / 2);
+      dock.classList.toggle("flip-h", x + 40 < 360);
+    },
+    initDrag() {
+      this.els.fab.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        const ox = this.pos.x, oy = this.pos.y;
+        let moved = false;
+        const onMove = (ev) => {
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+          moved = true;
+          this.els.fab.classList.add("dragging");
+          this.placeDock(ox + dx, oy + dy);
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          this.els.fab.classList.remove("dragging");
+          if (!moved) return;
+          Store.write(K.fabPos, this.pos);
+          this.suppressFabClick = true;
+          setTimeout(() => {
+            this.suppressFabClick = false;
+          }, 0);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    },
     toast(text, kind) {
       if (!this.root) return;
       const t = document.createElement("div");
       t.className = "sz-toast " + (kind || "ok");
       t.textContent = text;
       this.els.toasts.appendChild(t);
-      setTimeout(() => t.remove(), 3e3);
+      void t.offsetWidth;
+      t.classList.add("show");
+      setTimeout(() => {
+        t.classList.remove("show");
+        t.classList.add("hide");
+        setTimeout(() => t.remove(), 300);
+      }, 3e3);
     }
   };
 

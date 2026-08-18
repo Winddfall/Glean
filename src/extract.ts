@@ -8,7 +8,7 @@ export function extractPage(): PageData {
   const title = document.title || "";
   const h1 = ((document.querySelector("h1") || {}).textContent || "").trim();
   const metaEl = document.querySelector('meta[name="description"]');
-  const meta = (metaEl ? metaEl.getAttribute("content") : "" || "").trim();
+  const meta = (metaEl?.getAttribute("content") || "").trim();
   const text = extractMainText();
   return { url: location.href, origin: location.origin, title, h1, meta, text };
 }

@@ -1,7 +1,7 @@
 // Core 纯函数单测：node --test test/
 const test = require("node:test");
 const assert = require("node:assert");
-const { Core } = require("../拾知.js");
+const { Core } = require("../glean.js");
 
 test("fnv1a 稳定且为 base36 字符串", () => {
   assert.strictEqual(Core.fnv1a("https://example.com|正文"), Core.fnv1a("https://example.com|正文"));

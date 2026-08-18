@@ -1,11 +1,11 @@
 // 面板 UI（Shadow DOM）：目标/记录双 Tab + Toast
 
 import { K } from "./core/constants.js";
-import { esc, fmtTime, uid } from "./core/utils.js";
+import { clamp, esc, fmtTime, uid } from "./core/utils.js";
 import { Store, getState } from "./store.js";
 import { onLocationChange } from "./watcher.js";
 import { pumpQueue } from "./queue.js";
-import type { Goal, BrowseRecord } from "./types.js";
+import type { Goal, BrowseRecord, QueueItem } from "./types.js";
 
 const ICONS = {
   bulb: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>',
@@ -18,11 +18,18 @@ const ICONS = {
 const CSS = `
 :host { all: initial; }
 * { box-sizing: border-box; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-.sz-fab { position: fixed; right: 16px; bottom: 16px; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 4px 14px rgba(0,0,0,.14); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483000; color: #d97706; padding: 0; }
+.sz-dock { position: fixed; left: 0; top: 0; width: 40px; height: 40px; z-index: 2147483000; }
+.sz-fab { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 4px 14px rgba(0,0,0,.14); display: flex; align-items: center; justify-content: center; cursor: grab; color: #d97706; padding: 0; }
+.sz-fab.dragging { cursor: grabbing; }
 .sz-fab:hover { background: #fafafa; }
 .sz-fab.on { color: #16a34a; border-color: #bbf7d0; }
-.sz-panel { position: fixed; right: 16px; bottom: 64px; width: 360px; max-height: 70vh; background: #fff; border: 1px solid #e2e4e9; border-radius: 8px; box-shadow: 0 10px 32px rgba(0,0,0,.16); display: none; flex-direction: column; z-index: 2147483000; color: #1f2328; font-size: 13px; overflow: hidden; }
+.sz-pending { position: absolute; right: 48px; top: 10px; display: none; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #e2e4e9; box-shadow: 0 2px 8px rgba(0,0,0,.1); color: #6b7280; font-size: 11px; pointer-events: none; white-space: nowrap; }
+.sz-pending.on { display: inline-block; animation: sz-breathe 1.6s ease-in-out infinite; }
+@keyframes sz-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.sz-panel { position: absolute; right: 0; bottom: 48px; width: 360px; max-height: 70vh; background: #fff; border: 1px solid #e2e4e9; border-radius: 8px; box-shadow: 0 10px 32px rgba(0,0,0,.16); display: none; flex-direction: column; color: #1f2328; font-size: 13px; overflow: hidden; }
 .sz-panel.open { display: flex; }
+.sz-resize { position: absolute; top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 2; }
+.sz-resize svg { position: absolute; top: 3px; left: 3px; }
 .sz-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #eef0f3; }
 .sz-title { font-size: 14px; font-weight: 600; flex: 1; }
 .sz-mode { color: #6b7280; font-size: 12px; }
@@ -34,6 +41,7 @@ const CSS = `
 .sz-tab { flex: 1; padding: 6px 0; text-align: center; border-radius: 6px; cursor: pointer; color: #6b7280; background: transparent; border: none; font-size: 13px; }
 .sz-tab.act { background: #f3f4f6; color: #111827; font-weight: 600; }
 .sz-body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 120px; }
+.sz-body.sz-animH { flex: none; overflow: hidden; transition: height .2s ease; }
 .sz-foot { padding: 8px 12px; border-top: 1px solid #eef0f3; display: flex; justify-content: space-between; align-items: center; color: #9ca3af; font-size: 11px; }
 .sz-clear { background: none; border: none; color: #9ca3af; font-size: 11px; cursor: pointer; padding: 0; }
 .sz-clear:hover { color: #dc2626; }
@@ -52,23 +60,69 @@ const CSS = `
 .sz-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .sz-count { color: #9ca3af; font-weight: 400; font-size: 12px; }
 .sz-rec { padding: 6px 0; border-bottom: 1px dashed #f0f1f3; }
+.sz-rec-head { display: flex; align-items: flex-start; gap: 4px; }
+.sz-rec-main { flex: 1; min-width: 0; cursor: pointer; }
+.sz-rec-actions { display: flex; gap: 2px; flex: none; align-items: center; }
+.sz-rec.expanded .sz-rmeta { -webkit-line-clamp: unset; overflow: visible; }
+.sz-rec-detail { display: none; margin-top: 6px; padding: 8px; background: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.6; word-break: break-word; }
+.sz-rec.expanded .sz-rec-detail { display: block; }
+.sz-detail-sec { margin-top: 8px; }
+.sz-detail-sec:first-child { margin-top: 0; }
+.sz-detail-sec-title { font-size: 12px; font-weight: 600; color: #1f2328; margin-bottom: 4px; }
+.sz-detail-finding { display: flex; gap: 4px; padding: 2px 0; color: #4b5563; }
+.sz-detail-finding::before { content: "•"; color: #9ca3af; flex: none; }
+.sz-detail-note { padding: 6px 8px; background: #fff; border-radius: 4px; border: 1px solid #eef0f3; margin-top: 4px; }
+.sz-detail-note-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.sz-detail-note-topic { font-weight: 600; color: #1f2328; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sz-detail-note-rel { font-size: 10px; padding: 1px 6px; border-radius: 999px; flex: none; color: #6b7280; background: #f3f4f6; }
+.sz-detail-note-content { color: #4b5563; font-size: 12px; }
+.sz-del-btn { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; color: #9ca3af; cursor: pointer; padding: 0; flex: none; }
+.sz-del-btn:hover { background: #fef2f2; color: #dc2626; }
+.sz-rel { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 5px; }
+.sz-rel-high { background: #8ba888; }
+.sz-rel-mid { background: #9ba5b4; }
+.sz-rel-low { background: #c4a59a; }
+.sz-rel-none { background: #d6d3d1; }
 .sz-rtitle { display: block; color: #1f2328; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sz-rtitle:hover { text-decoration: underline; color: #2563eb; }
 .sz-rmeta { color: #6b7280; font-size: 12px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sz-select { margin-top: 4px; font-size: 11px; color: #6b7280; border: 1px solid #e5e7eb; border-radius: 4px; max-width: 140px; background: #fff; }
 .sz-retry { margin-top: 4px; font-size: 11px; color: #dc2626; border: 1px solid #fecaca; border-radius: 4px; background: #fff; cursor: pointer; padding: 1px 8px; }
 .sz-retry:hover { background: #fef2f2; }
-.sz-toasts { position: fixed; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 2147483001; pointer-events: none; }
-.sz-toast { background: #166534; color: #f9fafb; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.2); max-width: 300px; }
+.sz-toasts { position: absolute; right: 48px; bottom: 0; width: max-content; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 1; pointer-events: none; }
+.sz-toast { background: #166534; color: #f9fafb; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.2); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transform: translateX(40px) scale(.85); transform-origin: right center; transition: transform .25s ease-out, opacity .25s ease-out; }
+.sz-toast.show { opacity: 1; transform: translateX(0) scale(1); }
+.sz-toast.hide { opacity: 0; transform: translateX(40px) scale(.85); transition-timing-function: ease-in; }
 .sz-toast.idle { background: #92400e; }
 .sz-toast.err { background: #b91c1c; }
+.sz-dock.flip-v .sz-panel { bottom: auto; top: 48px; }
+.sz-dock.flip-v .sz-toasts { bottom: auto; top: 0; }
+.sz-dock.flip-h .sz-panel { right: auto; left: 0; }
+.sz-dock.flip-h .sz-pending { right: auto; left: 48px; }
+.sz-dock.flip-h .sz-toasts { right: auto; left: 48px; align-items: flex-start; }
+.sz-dock.flip-h .sz-toast { transform: translateX(-40px) scale(.85); transform-origin: left center; }
+.sz-dock.flip-h .sz-toast.show { transform: translateX(0) scale(1); }
+.sz-dock.flip-h .sz-toast.hide { transform: translateX(-40px) scale(.85); }
+.sz-dock.flip-v .sz-resize { top: auto; bottom: 0; cursor: nesw-resize; }
+.sz-dock.flip-h .sz-resize { left: auto; right: 0; cursor: nesw-resize; }
+.sz-dock.flip-v.flip-h .sz-resize { cursor: nwse-resize; }
+.sz-dock.flip-h .sz-resize svg { left: auto; right: 3px; transform: scaleX(-1); }
+.sz-dock.flip-v .sz-resize svg { top: auto; bottom: 3px; transform: scaleY(-1); }
+.sz-dock.flip-v.flip-h .sz-resize svg { transform: scale(-1, -1); }
 `;
 
 export const Panel = {
   tab: "goals",
   root: null as ShadowRoot | null,
+  pos: { x: 0, y: 0 },
+  suppressFabClick: false,
+  animTimer: 0,
+  panelSize: null as { w: number; h: number } | null,
   els: {} as {
+    dock: HTMLDivElement;
     fab: HTMLButtonElement;
+    resize: HTMLDivElement;
+    pending: HTMLSpanElement;
     panel: HTMLDivElement;
     body: HTMLDivElement;
     toasts: HTMLDivElement;
@@ -82,9 +136,12 @@ export const Panel = {
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
 <style>${CSS}</style>
+<div class="sz-dock">
 <div class="sz-toasts"></div>
 <button class="sz-fab" data-act="fab" title="拾知">${ICONS.bulb}</button>
+<span class="sz-pending" data-role="pending">分析中</span>
 <div class="sz-panel">
+  <div class="sz-resize" data-role="resize" title="拖拽调整大小 · 双击恢复默认"><svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 9 9 1M4 9 9 4M7 9 9 7" stroke="#d1d5db" stroke-width="1.2" stroke-linecap="round"/></svg></div>
   <div class="sz-head">
     <span class="sz-title">拾知</span>
     <span class="sz-mode">工作模式</span>
@@ -97,11 +154,15 @@ export const Panel = {
   </div>
   <div class="sz-body"></div>
   <div class="sz-foot"><span data-role="driver"></span><button class="sz-clear" data-act="clear">清空数据</button></div>
+</div>
 </div>`;
     document.documentElement.appendChild(host);
     this.root = shadow;
     this.els = {
+      dock: shadow.querySelector(".sz-dock")!,
       fab: shadow.querySelector(".sz-fab")!,
+      resize: shadow.querySelector(".sz-resize")!,
+      pending: shadow.querySelector('[data-role="pending"]')!,
       panel: shadow.querySelector(".sz-panel")!,
       body: shadow.querySelector(".sz-body")!,
       toasts: shadow.querySelector(".sz-toasts")!,
@@ -109,6 +170,20 @@ export const Panel = {
       driver: shadow.querySelector('[data-role="driver"]')!,
       tabs: Array.from(shadow.querySelectorAll(".sz-tab")),
     };
+    const saved = Store.read<{ x: number; y: number } | null>(K.fabPos, null);
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) this.placeDock(saved.x, saved.y);
+    else this.placeDock(window.innerWidth - 56, window.innerHeight - 56); // 默认右下角
+    addEventListener("resize", () => this.placeDock(this.pos.x, this.pos.y)); // 窗口变化后保持图标在视口内
+    const psz = Store.read<{ w: number; h: number } | null>(K.panelSize, null);
+    if (psz && Number.isFinite(psz.w) && Number.isFinite(psz.h)) {
+      this.panelSize = {
+        w: clamp(psz.w, 280, Math.round(window.innerWidth * 0.9)),
+        h: clamp(psz.h, 240, Math.round(window.innerHeight * 0.8)),
+      };
+      this.applyPanelSize();
+    }
+    this.initDrag();
+    this.initResize();
     shadow.addEventListener("click", (e) => this.onClick(e as MouseEvent));
     shadow.addEventListener("change", (e) => this.onChange(e as Event));
     shadow.addEventListener("keydown", (e) => {
@@ -120,13 +195,15 @@ export const Panel = {
     const btn = (e.target as Element).closest("[data-act]") as HTMLElement | null;
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === "fab") this.els.panel.classList.toggle("open");
+    if (act === "fab") { if (!this.suppressFabClick) this.els.panel.classList.toggle("open"); } // 拖拽后的 click 不触发展开
     else if (act === "close") this.els.panel.classList.remove("open");
-    else if (act === "tab") { this.tab = btn.dataset.tab; this.render(); }
+    else if (act === "tab") this.switchTab(btn.dataset.tab!);
     else if (act === "add-goal") this.addGoal();
     else if (act === "toggle-goal") this.toggleGoal(btn.closest(".sz-grow").dataset.id);
     else if (act === "del-goal") this.delGoal(btn.closest(".sz-grow").dataset.id);
     else if (act === "retry") this.retryRecord(btn.dataset.rid);
+    else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
+    else if (act === "del-record") this.delRecord(btn.dataset.rid!);
     else if (act === "clear") this.clearAll();
   },
   onChange(e: Event): void {
@@ -168,12 +245,22 @@ export const Panel = {
     Store.write(K.goals, Store.read<Goal[]>(K.goals, []).filter((x) => x.id !== id));
     this.render();
   },
+  delRecord(rid: string): void {
+    const recs = Store.read<BrowseRecord[]>(K.records, []);
+    const idx = recs.findIndex((r) => r.id === rid);
+    if (idx < 0) return;
+    recs.splice(idx, 1);
+    Store.write(K.records, recs);
+    const q = Store.read<{ recordId: string }[]>(K.queue, []);
+    Store.write(K.queue, q.filter((item) => item.recordId !== rid));
+    this.render();
+  },
   retryRecord(rid: string): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const rec = recs.find((r) => r.id === rid);
     if (!rec || !rec.excerpt) return;
     rec.category = "pending";
-    const q = Store.read<BrowseRecord[]>(K.queue, []);
+    const q = Store.read<QueueItem[]>(K.queue, []);
     q.push({ recordId: rec.id, excerpt: rec.excerpt, retries: 0, nextAt: 0 });
     delete rec.excerpt;
     Store.write(K.records, recs);
@@ -186,11 +273,32 @@ export const Panel = {
     Object.values(K).forEach((k) => Store.del(k));
     this.render();
   },
+  switchTab(tab: string): void {
+    if (tab === this.tab) return;
+    this.tab = tab;
+    if (this.panelSize) { this.render(); return; } // 已自定义尺寸：高度固定，跳过高度过渡
+    const body = this.els.body;
+    const prevH = body.offsetHeight;
+    const chrome = this.els.panel.offsetHeight - prevH; // 头部/标签栏/底部等固定高度
+    this.render(); // 更新 tab 激活态并替换内容
+    // 高度丝滑过渡：固定旧高度 → 过渡到新内容的自然高度（受 70vh 上限约束）
+    const newH = Math.max(120, Math.min(body.scrollHeight, Math.round(window.innerHeight * 0.7) - chrome));
+    clearTimeout(this.animTimer);
+    body.classList.add("sz-animH");
+    body.style.height = prevH + "px";
+    void body.offsetHeight; // 强制 reflow，确保过渡生效
+    body.style.height = newH + "px";
+    this.animTimer = setTimeout(() => {
+      body.classList.remove("sz-animH");
+      body.style.height = "";
+    }, 220);
+  },
   render(): void {
     if (!this.root) return;
     const st = getState();
     this.els.workmode.checked = !!st.workMode;
     this.els.fab.classList.toggle("on", !!st.workMode);
+    this.els.pending.classList.toggle("on", Store.read<QueueItem[]>(K.queue, []).length > 0);
     this.els.driver.textContent = "存储：" + Store.driverLabel();
     this.els.tabs.forEach((t) => t.classList.toggle("act", t.dataset.tab === this.tab));
     if (this.tab === "goals") this.renderGoals();
@@ -215,15 +323,15 @@ export const Panel = {
   renderRecords(): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const goals = Store.read<Goal[]>(K.goals, []);
-    const groups = goals.map((g) => ({
+    const groups: { key: string; name: string; color: string; items: BrowseRecord[] }[] = goals.map((g) => ({
       key: "goal:" + g.id, name: g.title,
-      color: g.status === "active" ? "#16a34a" : "#9ca3af", items: [],
+      color: g.status === "active" ? "#16a34a" : "#9ca3af", items: [] as BrowseRecord[],
     }));
     groups.push(
-      { key: "slacking", name: "摸鱼", color: "#d97706", items: [] },
-      { key: "pending", name: "分析中", color: "#6b7280", items: [] },
-      { key: "error", name: "分析失败", color: "#dc2626", items: [] },
-      { key: "orphan", name: "已移除目标", color: "#9ca3af", items: [] }
+      { key: "slacking", name: "摸鱼", color: "#d97706", items: [] as BrowseRecord[] },
+      { key: "pending", name: "分析中", color: "#6b7280", items: [] as BrowseRecord[] },
+      { key: "error", name: "分析失败", color: "#dc2626", items: [] as BrowseRecord[] },
+      { key: "orphan", name: "已移除目标", color: "#9ca3af", items: [] as BrowseRecord[] }
     );
     for (const r of recs) {
       let g = groups.find((x) => x.key === r.category);
@@ -247,10 +355,28 @@ export const Panel = {
       html += `<div class="sz-sec"><span class="sz-dot" style="background:${g.color}"></span>${esc(g.name)}<span class="sz-count">${g.items.length}</span></div>`;
       html += g.items.slice(0, 50).map((r) => {
         const movable = r.category === "slacking" || String(r.category).startsWith("goal:");
+        const findingsHtml = r.findings?.length
+          ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">💡 关键发现</div>${r.findings.map((f) => `<div class="sz-detail-finding">${esc(f)}</div>`).join("")}</div>`
+          : "";
+        const notesHtml = r.notes?.length
+          ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">📒 提取笔记</div>${r.notes.map((n) => `<div class="sz-detail-note"><div class="sz-detail-note-head"><span class="sz-detail-note-topic">${esc(n.topic)}</span><span class="sz-detail-note-rel">相关度 ${n.relevance}%</span></div><div class="sz-detail-note-content">${esc(n.content)}</div></div>`).join("")}</div>`
+          : "";
+        const relCls = r.relevance == null ? "sz-rel-none" : r.relevance >= 60 ? "sz-rel-high" : r.relevance >= 30 ? "sz-rel-mid" : "sz-rel-low";
+        const relTitle = r.relevance == null ? "未分析" : `相关度 ${r.relevance}/100`;
         return `
       <div class="sz-rec" data-id="${esc(r.id)}">
-        <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)}">${esc(r.title || r.url)}</a>
-        <div class="sz-rmeta">${fmtTime(r.capturedAt)} · ${esc(r.summary || r.preview || "")}</div>
+        <div class="sz-rec-head">
+          <span class="sz-rel ${relCls}" title="${relTitle}"></span>
+          <div class="sz-rec-main" data-act="expand">
+            <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)}">${esc(r.title || r.url)}</a>
+            <div class="sz-rmeta">${fmtTime(r.capturedAt)} · ${esc(r.summary || r.preview || "")}</div>
+          </div>
+          <div class="sz-rec-actions">
+            ${r.category === "pending" ? '<span class="sz-badge">分析中</span>' : ""}
+            <button class="sz-del-btn" data-act="del-record" data-rid="${esc(r.id)}" title="删除">${ICONS.x}</button>
+          </div>
+        </div>
+        <div class="sz-rec-detail">${findingsHtml}${notesHtml}${r.category === "pending" ? "正在分析中，请稍等片刻~" : ""}</div>
         ${movable ? selectHtml(r) : ""}
         ${r.category === "error" && r.excerpt ? `<button class="sz-retry" data-act="retry" data-rid="${esc(r.id)}">重试</button>` : ""}
       </div>`;
@@ -258,12 +384,99 @@ export const Panel = {
     }
     this.els.body.innerHTML = html || '<div class="sz-empty">暂无记录</div>';
   },
+  applyPanelSize(): void {
+    const p = this.els.panel;
+    if (this.panelSize) {
+      p.style.width = this.panelSize.w + "px";
+      p.style.height = this.panelSize.h + "px";
+      p.style.maxHeight = "80vh"; // 自定义尺寸时放宽默认 70vh 上限
+    } else {
+      p.style.width = "";
+      p.style.height = "";
+      p.style.maxHeight = "";
+    }
+  },
+  initResize(): void {
+    this.els.resize.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); // 避免拖动时选中面板文本
+      const sx = e.clientX, sy = e.clientY;
+      const rect = this.els.panel.getBoundingClientRect();
+      const sw = rect.width, sh = rect.height;
+      // 面板锚定边固定：默认锚右下，向左/上拖变大；翻转后方向随之反转
+      const dirX = this.els.dock.classList.contains("flip-h") ? 1 : -1;
+      const dirY = this.els.dock.classList.contains("flip-v") ? 1 : -1;
+      const onMove = (ev: MouseEvent) => {
+        const w = clamp(Math.round(sw + (ev.clientX - sx) * dirX), 280, Math.round(window.innerWidth * 0.9));
+        const h = clamp(Math.round(sh + (ev.clientY - sy) * dirY), 240, Math.round(window.innerHeight * 0.8));
+        this.panelSize = { w, h };
+        this.applyPanelSize();
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (this.panelSize) Store.write(K.panelSize, this.panelSize); // 尺寸记忆
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    this.els.resize.addEventListener("dblclick", () => {
+      this.panelSize = null;
+      Store.del(K.panelSize);
+      this.applyPanelSize(); // 恢复默认：宽 360px、高度自适应
+    });
+  },
+  placeDock(x: number, y: number): void {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    x = clamp(x, 0, Math.max(0, vw - 40));
+    y = clamp(y, 0, Math.max(0, vh - 40));
+    this.pos = { x, y };
+    const dock = this.els.dock;
+    dock.style.left = x + "px";
+    dock.style.top = y + "px";
+    // 图标在上半屏时面板/toast 向下展开；左侧空间不足 360px 时换到图标右侧
+    dock.classList.toggle("flip-v", y + 20 < vh / 2);
+    dock.classList.toggle("flip-h", x + 40 < 360);
+  },
+  initDrag(): void {
+    this.els.fab.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); // 避免拖动时选中页面文本
+      const sx = e.clientX, sy = e.clientY;
+      const ox = this.pos.x, oy = this.pos.y;
+      let moved = false;
+      const onMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return; // 5px 内视为点击
+        moved = true;
+        this.els.fab.classList.add("dragging");
+        this.placeDock(ox + dx, oy + dy);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        this.els.fab.classList.remove("dragging");
+        if (!moved) return;
+        Store.write(K.fabPos, this.pos); // 位置记忆
+        this.suppressFabClick = true; // 抑制紧随其后的 click，避免误触发展开面板
+        setTimeout(() => { this.suppressFabClick = false; }, 0);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  },
   toast(text: string, kind?: string): void {
     if (!this.root) return;
     const t = document.createElement("div");
     t.className = "sz-toast " + (kind || "ok");
     t.textContent = text;
     this.els.toasts.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
+    void t.offsetWidth; // 强制 reflow，确保入场过渡生效
+    t.classList.add("show");
+    setTimeout(() => {
+      t.classList.remove("show");
+      t.classList.add("hide"); // 向右收入图标方向后再移除节点
+      setTimeout(() => t.remove(), 300);
+    }, 3000);
   },
 };

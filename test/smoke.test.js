@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const { JSDOM } = require("/Users/windfall/Developer/gemini-voyager/node_modules/jsdom");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HTML = fs.readFileSync(path.join(__dirname, "fixtures", "lxf-python-intro.html"), "utf8");
-const SRC = fs.readFileSync(path.join(__dirname, "..", "拾知.js"), "utf8");
+const SRC = fs.readFileSync(path.join(__dirname, "..", "glean.js"), "utf8");
 const PAGE_URL = "https://liaoxuefeng.com/books/python/introduction/index.html";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

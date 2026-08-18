@@ -17,6 +17,12 @@ export interface Todo {
   manual: boolean;
 }
 
+export interface NoteEntry {
+  topic: string;
+  content: string;
+  relevance: number; // 0-100
+}
+
 export interface BrowseRecord {
   id: string;
   url: string;
@@ -30,6 +36,9 @@ export interface BrowseRecord {
   category: string; // "pending" | "goal:{id}" | "slacking" | "error"
   summary: string;
   keywords: string[];
+  relevance?: number; // 0-100，LLM 分析产出
+  findings?: string[]; // 关键发现
+  notes?: NoteEntry[]; // 提取笔记
   excerpt?: string; // 分析失败时留存，供重试
 }
 
@@ -69,6 +78,9 @@ export interface AnalysisResult {
   goalId: string | null;
   summary: string;
   keywords: string[];
+  relevance: number; // 0-100
+  findings: string[]; // 关键发现
+  notes: NoteEntry[]; // 提取笔记
 }
 
 // Tabbit 注入的全局对象

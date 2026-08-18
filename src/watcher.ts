@@ -37,21 +37,27 @@ function armDwell(): void {
 
 function capture(): void {
   const st = getState();
-  if (!st.workMode) return;                                            // 模式闸
+  if (!st.workMode) return; // 模式闸
   const goals = Store.read<BrowseRecord[]>(K.goals, []).filter((g) => g.status === "active");
-  if (!goals.length) return;                                           // 目标闸
+  if (!goals.length) return; // 目标闸
   if (settings().excludedSites.some((x) => location.href.includes(x))) return; // 站点闸
   if (document.visibilityState !== "visible") return;
+  // 提取页面信息
   const page = extractPage();
   if (!page.text || page.text.length < 100) return;
   const hash = fnv1a(page.url.split("#")[0] + "|" + page.text.slice(0, 500));
   const recs = Store.read<BrowseRecord[]>(K.records, []);
   const now = Date.now();
-  if (recs.some((r) => r.excerptHash === hash && now - r.capturedAt < settings().dedupeWindowMs)) return; // 去重闸
+  if (recs.some((r) => r.url === page.url)) return; // 去重闸
   const rec: BrowseRecord = {
-    id: uid("r"), url: page.url, origin: page.origin,
-    title: page.title, h1: page.h1, meta: page.meta,
-    capturedAt: now, excerptHash: hash,
+    id: uid("r"),
+    url: page.url,
+    origin: page.origin,
+    title: page.title,
+    h1: page.h1,
+    meta: page.meta,
+    capturedAt: now,
+    excerptHash: hash,
     preview: truncate(page.text.replace(/\s+/g, " "), 160),
     category: "pending", summary: "", keywords: [],
   };

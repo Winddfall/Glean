@@ -5,7 +5,7 @@ import { backoffMs, sleep, parseJsonLoose } from "./core/utils.js";
 import { buildPagePrompt, validateAnalysis } from "./core/prompt.js";
 import { Store, settings } from "./store.js";
 import { Panel } from "./panel.js";
-import type { QueueItem, BrowseRecord } from "./types.js";
+import type { QueueItem, BrowseRecord, Goal } from "./types.js";
 
 let pumping = false;
 
@@ -51,7 +51,7 @@ export async function pumpQueue(): Promise<void> {
 }
 
 async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
-  const goals = Store.read<BrowseRecord[]>(K.goals, []).filter((g) => g.status === "active");
+  const goals = Store.read<Goal[]>(K.goals, []).filter((g) => g.status === "active");
   const prompt = buildPagePrompt(
     { url: rec.url, title: rec.title, h1: rec.h1, meta: rec.meta, excerpt: item.excerpt },
     goals
@@ -60,6 +60,9 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
   const res = validateAnalysis(parseJsonLoose(raw), goals);
   rec.summary = res.summary;
   rec.keywords = res.keywords;
+  rec.relevance = res.relevance;
+  rec.findings = res.findings;
+  rec.notes = res.notes;
   rec.category = res.relevant && res.goalId ? "goal:" + res.goalId : "slacking";
   const g = goals.find((x) => x.id === res.goalId);
   Panel.toast(res.relevant && g ? "已归档至：" + g.title : "已归入摸鱼", res.relevant && g ? "ok" : "idle");
