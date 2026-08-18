@@ -22,7 +22,7 @@ function boot(): void {
 // 连入口按钮都不出现。队列分析依赖 LLMBridge，但 pumpQueue 内部有 try/catch
 // 退避，LLMBridge 未就绪时只会退避重试，不会崩溃；就绪后由定时器自动恢复。
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  if (!window.__shizhiLoaded) {
+  if (!window.__shizhiLoaded && typeof LLMBridge !== "undefined") {
     window.__shizhiLoaded = true;
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", boot, { once: true });
