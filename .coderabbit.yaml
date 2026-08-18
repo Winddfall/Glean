@@ -1,0 +1,10 @@
+# .coderabbit.yaml - 放置在仓库根目录
+language: "en-US"
+reviews:
+  profile: "chill" # 审查风格："chill"（温和）或 "assertive"（主动）[citation:1][citation:9]
+  request_changes_workflow: false # 设为 false，让审查结果只作为建议，不会直接阻止PR合并[citation:9]
+  auto_review:
+    enabled: true # 开启自动审查
+    drafts: false # 不对草稿状态的PR进行审查
+    base_branches: # 只对目标为 main 分支的PR进行审查
+      - "main"
