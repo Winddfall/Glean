@@ -9,6 +9,7 @@ export const K = {
   queue: "shizhi.queue",
   settings: "shizhi.settings",
   theme: "shizhi.theme",
+  profile: "shizhi.profile",
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,4 +20,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dedupeWindowMs: 30 * 60 * 1000,
   recordCap: 500,
   excludedSites: [],     // 子串匹配 URL，命中不记录
+  linkedUrl: "",         // 关联网址
+  analysisPrompt: "",    // 分析提示词（空 = 预设）
 };

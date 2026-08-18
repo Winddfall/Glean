@@ -12,7 +12,10 @@
     "test": "npm run build && node --test test/smoke.test.js"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.8.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
   }
 }

@@ -5,7 +5,22 @@ export interface Goal {
   title: string;
   status: "active" | "done" | "archived";
   createdAt: number;
+  prompt?: string;          // 目标级分类提示词
+  tasks?: Task[];           // 二级：任务
   todos: Todo[];
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  prompt?: string;          // 任务级提示词
+  subtasks?: Subtask[];     // 三级：子任务
+}
+
+export interface Subtask {
+  id: string;
+  title: string;
+  prompt?: string;
 }
 
 export interface Todo {
@@ -15,6 +30,7 @@ export interface Todo {
   coverage: number;
   status: "open" | "done";
   manual: boolean;
+  searchTerms?: string[];          // 搜索词推荐
 }
 
 export interface NoteEntry {
@@ -57,6 +73,14 @@ export interface Settings {
   dedupeWindowMs: number;
   recordCap: number;
   excludedSites: string[];
+  linkedUrl: string;          // 当前关联网址（搜索跳转目标）
+  analysisPrompt: string;     // 记录分析提示词（空 = 用预设）
+}
+
+export interface Profile {
+  updatedAt: number;
+  facts: string[];
+  preferences: string[];
 }
 
 export interface WorkState {
