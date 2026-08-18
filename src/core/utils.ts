@@ -14,14 +14,13 @@ export function clamp(n: number, lo: number, hi: number): number {
 }
 
 export function truncate(s: unknown, n: number): string {
-  s = String(s == null ? "" : s);
-  return s.length > n ? s.slice(0, n) : s;
+  const str = String(s == null ? "" : s);
+  return str.length > n ? str.slice(0, n) : str;
 }
 
 export function esc(s: unknown): string {
-  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
-  ));
+  const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => map[c]);
 }
 
 export function uid(prefix: string): string {

@@ -27,7 +27,7 @@ export async function pumpQueue(): Promise<void> {
       try {
         await analyze(rec, item);
         Store.write(K.records, recs);
-        Store.write(K.queue, Store.read(K.queue, []).filter((i) => i.recordId !== item.recordId));
+        Store.write(K.queue, Store.read<QueueItem[]>(K.queue, []).filter((i) => i.recordId !== item.recordId));
         Panel.render();
         await sleep(settings().queueGapMs);
       } catch (e) {
@@ -36,7 +36,7 @@ export async function pumpQueue(): Promise<void> {
           rec.category = "error";
           rec.excerpt = item.excerpt; // 留存摘录供手动重试
           Store.write(K.records, recs);
-          Store.write(K.queue, Store.read(K.queue, []).filter((i) => i.recordId !== item.recordId));
+          Store.write(K.queue, Store.read<QueueItem[]>(K.queue, []).filter((i) => i.recordId !== item.recordId));
           Panel.render();
         } else {
           item.nextAt = Date.now() + backoffMs(item.retries);

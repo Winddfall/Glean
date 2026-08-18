@@ -17,9 +17,12 @@ function boot(): void {
   setInterval(pumpQueue, 10000);
 }
 
-// 防重复注入 + 非 Tabbit 环境静默退出
+// 防重复注入。只要在浏览器环境就挂载 UI，不把 LLMBridge 作为启动门槛：
+// Tabbit 可能异步注入 LLMBridge（脚本执行后才可用），若在此处判断会静默退出、
+// 连入口按钮都不出现。队列分析依赖 LLMBridge，但 pumpQueue 内部有 try/catch
+// 退避，LLMBridge 未就绪时只会退避重试，不会崩溃；就绪后由定时器自动恢复。
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  if (!window.__shizhiLoaded && typeof LLMBridge !== "undefined") {
+  if (!window.__shizhiLoaded) {
     window.__shizhiLoaded = true;
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", boot, { once: true });
