@@ -8,6 +8,7 @@ export const K = {
   records: "shizhi.records",
   queue: "shizhi.queue",
   settings: "shizhi.settings",
+  theme: "shizhi.theme",
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
