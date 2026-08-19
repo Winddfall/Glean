@@ -53,6 +53,8 @@ const ICONS = {
   copy: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   todo: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="m3 6 1 1 2-2"/><path d="m3 12 1 1 2-2"/><path d="m3 18 1 1 2-2"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
 };
 
 // 去 AI 味的设计语言：中性暖灰 + 单一墨绿强调色，系统字体，极简阴影
@@ -73,6 +75,12 @@ const CSS = `
   --med: #d97706;
   --low: #dc2626;
   --radius: 6px;
+  --hover: #f5f5f4;
+  --row: #fafaf9;
+  --row-border: #f0f0ee;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+  --accent-contrast: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
   color: var(--fg);
   font-size: 13px;
@@ -105,13 +113,13 @@ button { font-family: inherit; }
 .sz-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
 .sz-foot-label { color: var(--muted); font-size: 11px; flex: none; }
 
-.sz-input { flex: 1; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; outline: none; min-width: 0; color: var(--fg); background: #fff; }
+.sz-input { flex: 1; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; outline: none; min-width: 0; color: var(--fg); background: var(--surface); }
 .sz-input:focus { border-color: var(--accent); }
 .sz-input::placeholder { color: var(--faint); }
 
 .sz-ibtn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: var(--radius); color: var(--muted); cursor: pointer; padding: 0; flex: none; }
-.sz-ibtn:hover { background: #f5f5f4; color: var(--fg); }
-.sz-ibtn.danger:hover { background: #fef2f2; color: var(--low); }
+.sz-ibtn:hover { background: var(--hover); color: var(--fg); }
+.sz-ibtn.danger:hover { background: var(--danger-soft); color: var(--low); }
 
 .sz-empty { color: var(--faint); text-align: center; padding: 28px 12px; font-size: 12px; }
 .sz-sec { display: flex; align-items: center; gap: 6px; font-weight: 600; margin: 12px 0 4px; font-size: 12px; color: var(--muted); }
@@ -120,10 +128,10 @@ button { font-family: inherit; }
 .sz-count { color: var(--faint); font-weight: 400; }
 
 /* 目标三级树 */
-.sz-node { border-bottom: 1px solid #f5f5f4; }
+.sz-node { border-bottom: 1px solid var(--hover); }
 .sz-node:last-child { border-bottom: none; }
 .sz-row { display: flex; align-items: center; gap: 4px; padding: 5px 2px; }
-.sz-row:hover { background: #fafaf9; }
+.sz-row:hover { background: var(--row); }
 .sz-row.dragover { background: var(--accent-soft); outline: 1px dashed var(--accent); outline-offset: -1px; }
 .sz-grip { color: var(--faint); cursor: grab; display: flex; flex: none; opacity: 0; }
 .sz-row:hover .sz-grip { opacity: 1; }
@@ -159,7 +167,7 @@ button { font-family: inherit; }
 .sz-ai-actions .sz-btn.primary:hover { background: #15803d; }
 
 /* 记录列表 */
-.sz-rec { border-bottom: 1px solid #f5f5f4; }
+.sz-rec { border-bottom: 1px solid var(--hover); }
 .sz-rec:last-child { border-bottom: none; }
 .sz-rechead { display: flex; align-items: center; gap: 6px; padding: 7px 2px; cursor: pointer; }
 .sz-rel { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -178,12 +186,12 @@ button { font-family: inherit; }
 .sz-rtitle { color: var(--fg); font-weight: 600; font-size: 13px; margin-bottom: 4px; }
 .sz-rsum { color: var(--muted); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 .sz-rsum.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.sz-kw { display: inline-block; font-size: 11px; color: var(--muted); background: #f5f5f4; border-radius: 4px; padding: 1px 6px; margin: 6px 4px 0 0; }
+.sz-kw { display: inline-block; font-size: 11px; color: var(--muted); background: var(--hover); border-radius: 4px; padding: 1px 6px; margin: 6px 4px 0 0; }
 .sz-findings { margin-top: 8px; }
 .sz-findings .h { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 3px; }
 .sz-finding { display: flex; gap: 5px; font-size: 12px; color: var(--fg); margin-bottom: 2px; }
 .sz-finding::before { content: "·"; color: var(--accent); flex: none; }
-.sz-note { margin-top: 8px; padding: 6px 8px; background: #fafaf9; border: 1px solid #f0f0ee; border-radius: var(--radius); }
+.sz-note { margin-top: 8px; padding: 6px 8px; background: var(--row); border: 1px solid var(--row-border); border-radius: var(--radius); }
 .sz-note .t { font-size: 12px; font-weight: 600; color: var(--fg); margin-bottom: 2px; }
 .sz-note .c { font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
 .sz-racting { display: flex; gap: 12px; margin-top: 8px; }
@@ -192,14 +200,14 @@ button { font-family: inherit; }
 .sz-rbtn { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; background: none; border: none; cursor: pointer; padding: 0; }
 .sz-rbtn:hover { color: var(--low); }
 .sz-pending-hint { color: var(--faint); font-size: 12px; padding: 6px 0; }
-.sz-retry { font-size: 11px; color: var(--low); border: 1px solid #fecaca; border-radius: 4px; background: #fff; cursor: pointer; padding: 1px 8px; margin-top: 6px; }
-.sz-retry:hover { background: #fef2f2; }
+.sz-retry { font-size: 11px; color: var(--low); border: 1px solid var(--danger-border); border-radius: 4px; background: var(--surface); cursor: pointer; padding: 1px 8px; margin-top: 6px; }
+.sz-retry:hover { background: var(--danger-soft); }
 
 .sz-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
 .sz-search { flex: 1; }
 .sz-seg { display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; flex: none; }
-.sz-seg button { background: #fff; border: none; padding: 4px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
-.sz-seg button.act { background: #f5f5f4; color: var(--fg); font-weight: 600; }
+.sz-seg button { background: var(--surface); border: none; padding: 4px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.sz-seg button.act { background: var(--hover); color: var(--fg); font-weight: 600; }
 .sz-seg button + button { border-left: 1px solid var(--border-strong); }
 .sz-filterbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; padding: 6px 10px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); }
 .sz-filter-name { flex: 1; font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -209,7 +217,7 @@ button { font-family: inherit; }
 /* 导出浮层 */
 .sz-pop { position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,.12); z-index: 10; min-width: 160px; padding: 4px; }
 .sz-pop-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; font-size: 13px; color: var(--fg); cursor: pointer; border-radius: 4px; }
-.sz-pop-item:hover { background: #f5f5f4; }
+.sz-pop-item:hover { background: var(--hover); }
 
 /* todo 独立气泡 */
 .sz-todo { position: fixed; right: 64px; bottom: 16px; z-index: 2147482999; }
@@ -221,11 +229,11 @@ button { font-family: inherit; }
 .sz-todo-pop.open { display: block; }
 .sz-todo-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 .sz-todo-list { padding: 6px 12px 10px; }
-.sz-todo-item { padding: 8px 0; border-bottom: 1px solid #f5f5f4; }
+.sz-todo-item { padding: 8px 0; border-bottom: 1px solid var(--hover); }
 .sz-todo-item:last-child { border-bottom: none; }
 .sz-todo-text { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 4px; }
 .sz-todo-text .t { flex: 1; }
-.sz-bar { height: 4px; background: #f5f5f4; border-radius: 2px; overflow: hidden; }
+.sz-bar { height: 4px; background: var(--hover); border-radius: 2px; overflow: hidden; }
 .sz-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .sz-todo-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; font-size: 11px; color: var(--faint); }
 .sz-copy { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 0; }
@@ -234,12 +242,12 @@ button { font-family: inherit; }
 .sz-ctxmenu { position: fixed; z-index: 2147483002; min-width: 140px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 4px; display: none; }
 .sz-ctxmenu.open { display: block; }
 .sz-ctxmenu-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; font-size: 13px; color: var(--fg); cursor: pointer; border-radius: 4px; }
-.sz-ctxmenu-item:hover { background: #f5f5f4; }
+.sz-ctxmenu-item:hover { background: var(--hover); }
 .sz-ctxmenu-item:disabled { color: var(--faint); cursor: not-allowed; }
 
 .sz-autocomplete { position: fixed; z-index: 2147483001; display: none; }
 .sz-autocomplete.open { display: block; }
-.sz-ac-tip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; border: none; border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.sz-ac-tip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
 .sz-ac-tip:hover { background: #0b5f59; }
 
 .sz-toasts { position: fixed; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 2147483001; pointer-events: none; }
@@ -252,12 +260,12 @@ button { font-family: inherit; }
 .sz-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .sz-textarea { width: 100%; min-height: 90px; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 12px; font-family: inherit; resize: vertical; outline: none; color: var(--fg); }
 .sz-textarea:focus { border-color: var(--accent); }
-.sz-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-strong); background: #fff; border-radius: var(--radius); padding: 5px 12px; font-size: 12px; color: var(--fg); cursor: pointer; white-space: nowrap; }
-.sz-btn:hover { background: #f5f5f4; }
-.sz-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sz-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: var(--radius); padding: 5px 12px; font-size: 12px; color: var(--fg); cursor: pointer; white-space: nowrap; }
+.sz-btn:hover { background: var(--hover); }
+.sz-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .sz-btn.primary:hover { background: #0b5f59; }
 .sz-btn.danger { color: var(--low); }
-.sz-btn.danger:hover { background: #fef2f2; border-color: #fecaca; }
+.sz-btn.danger:hover { background: var(--danger-soft); border-color: var(--danger-border); }
 .sz-note { font-size: 11px; color: var(--faint); line-height: 1.6; }
 .sz-note a { color: var(--accent); }
 
@@ -266,6 +274,27 @@ button { font-family: inherit; }
 
 .sz-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: ew-resize; }
 .sz-resize:hover { background: rgba(15,118,110,.15); }
+:host(.dark) {
+  --bg: #1c1917;
+  --surface: #292524;
+  --fg: #e7e5e4;
+  --muted: #a8a29e;
+  --faint: #78716c;
+  --border: #38322f;
+  --border-strong: #44403c;
+  --accent: #2dd4bf;
+  --accent-soft: #134e4a;
+  --high: #4ade80;
+  --med: #fbbf24;
+  --low: #f87171;
+  --hover: #38322f;
+  --row: #2e2a27;
+  --row-border: #38322f;
+  --danger-soft: #3f1d1d;
+  --danger-border: #7f1d1d;
+  --accent-contrast: #052e2b;
+}
+:host(.dark) .sz-textarea { background: var(--surface); }
 `;
 
 // 当前聚焦的宿主页面输入框（用于输入自动补全）
@@ -517,6 +546,7 @@ export const Panel = {
     body: HTMLDivElement;
     toasts: HTMLDivElement;
     workmode: HTMLInputElement;
+    theme: HTMLButtonElement;
     todoBar: HTMLButtonElement;
     todoPop: HTMLDivElement;
     ctxmenu: HTMLDivElement;
@@ -528,6 +558,7 @@ export const Panel = {
     seedDemoData();
     const host = document.createElement("div");
     host.id = "shizhi-host";
+    if (Store.read<string>(K.theme, "light") === "dark") host.classList.add("dark");
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
 <style>${CSS}</style>
@@ -554,6 +585,7 @@ export const Panel = {
       <button class="sz-ibtn" data-act="export" title="导出记录">${ICONS.download}</button>
       <div class="sz-pop" data-role="export-pop" style="display:none"></div>
     </div>
+    <button class="sz-ibtn" data-act="theme" data-role="theme" title="切换深色/浅色主题">${ICONS.moon}</button>
     <button class="sz-ibtn" data-act="close" title="关闭">${ICONS.x}</button>
   </div>
   <div class="sz-tabs">
@@ -578,6 +610,7 @@ export const Panel = {
       body: shadow.querySelector(".sz-body")!,
       toasts: shadow.querySelector(".sz-toasts")!,
       workmode: shadow.querySelector('[data-role="workmode"]')!,
+      theme: shadow.querySelector('[data-role="theme"]')!,
       todoBar: shadow.querySelector(".sz-todo-bar")!,
       todoPop: shadow.querySelector(".sz-todo-pop")!,
       ctxmenu: shadow.querySelector('[data-role="ctxmenu"]')!,
@@ -615,6 +648,7 @@ export const Panel = {
     const handle = shadow.querySelector('[data-role="resize"]') as HTMLDivElement;
     handle.addEventListener("pointerdown", (e) => this.onResizeStart(e as PointerEvent));
 
+    this.renderThemeBtn();
     this.render();
   },
 
@@ -634,6 +668,7 @@ export const Panel = {
     else if (act === "close") this.els.panel.classList.remove("open");
     else if (act === "tab") { UI.tab = btn.dataset.tab || "goals"; this.render(); }
     else if (act === "export") { UI.exportOpen = !UI.exportOpen; this.renderExportPop(); }
+    else if (act === "theme") this.toggleTheme();
     else if (act === "export-selected") this.exportSelected();
     else if (act === "export-cancel") this.exportCancel();
     else if (act === "todo-bar") { UI.todoOpen = !UI.todoOpen; this.renderTodo(); }
@@ -681,6 +716,22 @@ else if (act === "ai-reparse") this.reparseGoalWithAI();
     else if (act === "toggle-full") { const id = btn.dataset.rid || ""; if (UI.expandedFull.has(id)) UI.expandedFull.delete(id); else UI.expandedFull.add(id); this.renderRecords(); }
     else if (act === "search-term") this.searchTerm(btn.dataset.term || "");
     else if (act === "toggle-sec") { const el = btn.closest(".sz-sec"); if (el) { el.classList.toggle("open"); } }
+  },
+
+  toggleTheme(): void {
+    const host = this.root!.host as HTMLElement;
+    const dark = host.classList.toggle("dark");
+    Store.write(K.theme, dark ? "dark" : "light");
+    this.renderThemeBtn();
+  },
+
+  renderThemeBtn(): void {
+    const host = this.root!.host as HTMLElement;
+    const dark = host.classList.contains("dark");
+    if (this.els.theme) {
+      this.els.theme.innerHTML = dark ? ICONS.sun : ICONS.moon;
+      this.els.theme.title = dark ? "切换到浅色主题" : "切换到深色主题";
+    }
   },
 
   onChange(e: Event): void {
@@ -1696,7 +1747,7 @@ else if (act === "ai-reparse") this.reparseGoalWithAI();
       ${d.questions && d.questions.length ? `<div style="background:#fff8e1;border:1px solid #f0d98c;border-radius:6px;padding:8px 10px;margin:8px 0;font-size:12px;color:#7a6a1f">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div style="font-weight:600">AI 需要你确认这些点，回答后点击右侧按钮重新拆解：</div>
-          <button class="sz-btn" data-act="ai-reparse" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border-color:var(--accent);white-space:nowrap">重新拆解</button>
+          <button class="sz-btn" data-act="ai-reparse" style="font-size:11px;padding:4px 12px;background:var(--accent);color:var(--accent-contrast);border-color:var(--accent);white-space:nowrap">重新拆解</button>
         </div>
         ${d.questions.map((q, i) => `<div style="margin-bottom:6px"><div>· ${esc(q)}</div><input class="sz-input" data-ai-answer="${i}" placeholder="你的回答" style="margin-top:4px;font-size:12px;padding:4px 6px" value=""></div>`).join("")}
       </div>` : ""}
@@ -1822,7 +1873,7 @@ else if (act === "ai-reparse") this.reparseGoalWithAI();
             ? m.notes.map((n) => `<div class="sz-note"><div class="t">${esc(n.topic)}</div><div class="c">${highlightText(n.content, q)}</div></div>`).join("")
             : "";
           const quotesHtml = m.keyQuotes.length
-            ? `<div style="margin:6px 0;padding:6px 8px;background:#f8f9fa;border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--muted)">${m.keyQuotes.map((kq) => `<div style="margin-bottom:4px"><div style="font-style:italic;color:var(--text)">"${esc(kq.quote)}"</div><div style="font-size:11px;margin-top:2px">— ${esc(kq.context)}</div></div>`).join("")}</div>`
+            ? `<div style="margin:6px 0;padding:6px 8px;background:var(--row);border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--muted)">${m.keyQuotes.map((kq) => `<div style="margin-bottom:4px"><div style="font-style:italic;color:var(--fg)">"${esc(kq.quote)}"</div><div style="font-size:11px;margin-top:2px">— ${esc(kq.context)}</div></div>`).join("")}</div>`
             : "";
           matchHtml = `
             ${m.reasoning ? `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">${highlightText(m.reasoning, q)}</div>` : ""}
@@ -1943,9 +1994,9 @@ else if (act === "ai-reparse") this.reparseGoalWithAI();
     <div class="sz-field">
       <span class="sz-label">配套 Skill 下载</span>
       <div style="display:flex;gap:2px;margin-bottom:8px">
-        ${cloneTabs.map((t) => `<button class="sz-btn" data-act="clone-tab" data-tab="${t.key}" style="border-bottom:${t.key === activeClone.key ? "2px solid transparent" : "2px solid var(--accent)"};border-radius:4px 4px 0 0;background:${t.key === activeClone.key ? "#f0f0f0" : "transparent"};padding:4px 10px;font-size:13px">${esc(t.label)}</button>`).join("")}
+        ${cloneTabs.map((t) => `<button class="sz-btn" data-act="clone-tab" data-tab="${t.key}" style="border-bottom:${t.key === activeClone.key ? "2px solid transparent" : "2px solid var(--accent)"};border-radius:4px 4px 0 0;background:${t.key === activeClone.key ? "var(--hover)" : "transparent"};padding:4px 10px;font-size:13px">${esc(t.label)}</button>`).join("")}
       </div>
-      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f6f8fa;border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;font-size:12px;color:var(--text)">
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--row);border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;font-size:12px;color:var(--fg)">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(activeClone.cmd)}</span>
         <button class="sz-btn" data-act="copy-clone" data-cmd="${esc(activeClone.cmd)}" style="padding:2px 8px;font-size:12px;flex-shrink:0">复制</button>
       </div>
