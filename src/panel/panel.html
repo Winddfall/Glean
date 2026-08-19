@@ -1,0 +1,47 @@
+<div class="sz-dock">
+<div class="sz-toasts"></div>
+<button class="sz-fab" data-act="fab" title="拾知">{{bulb}}</button>
+<span class="sz-pending" data-role="pending">分析中</span>
+<div class="sz-todo">
+  <button class="sz-todo-bar" data-act="todo-bar" title="待办建议">
+    <span class="sz-dot"></span>
+    <span class="txt" data-role="todo-txt">待办</span>
+  </button>
+  <div class="sz-todo-pop" data-role="todo-pop">
+    <div class="sz-todo-head"><span>待办建议</span><button class="sz-ibtn" data-act="todo-close" title="关闭">{{close}}</button></div>
+    <div class="sz-todo-list" data-role="todo-list"></div>
+  </div>
+</div>
+<div class="sz-panel">
+  <div class="sz-resize" data-role="resize" title="拖拽调整大小 · 双击恢复默认"><svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 9 9 1M4 9 9 4M7 9 9 7" stroke="#d1d5db" stroke-width="1.2" stroke-linecap="round"/></svg></div>
+  <div class="sz-head">
+    <span class="sz-title">拾知</span>
+    <span class="sz-mode">工作模式</span>
+    <input type="checkbox" class="sz-switch" data-role="workmode" aria-label="切换工作模式">
+    <div class="sz-export-wrap">
+      <button class="sz-ibtn" data-act="export" title="导出记录">{{download}}</button>
+      <div class="sz-pop" data-role="export-pop" style="display:none"></div>
+    </div>
+    <button class="sz-theme-btn" data-act="theme" title="切换主题"></button>
+    <button class="sz-ibtn" data-act="close" title="关闭">{{close}}</button>
+  </div>
+  <div class="sz-tabs">
+    <button class="sz-tab act" data-act="tab" data-tab="goals">目标</button>
+    <button class="sz-tab" data-act="tab" data-tab="records">记录</button>
+    <button class="sz-tab" data-act="tab" data-tab="profile">画像</button>
+    <button class="sz-tab" data-act="tab" data-tab="settings">设置</button>
+  </div>
+  <div class="sz-rectools">
+    <input class="sz-input" data-role="rec-search" placeholder="搜索目标分组内的记录" maxlength="50" aria-label="搜索当前目标分组记录">
+    <button class="sz-sortbtn" data-act="rec-sort" title="切换排序方式"></button>
+  </div>
+  <div class="sz-body"></div>
+  <div class="sz-foot">
+    <input class="sz-input" data-role="linked-url" placeholder="关联网址：填站点名或网址，点 ✦ 让 AI 补全搜索参数" aria-label="关联网址">
+    <button class="sz-ibtn sz-accent" data-act="ai-linked" title="AI 补全搜索参数">{{sparkle}}</button>
+  </div>
+</div>
+</div>
+<div class="sz-ctxmenu" data-role="ctxmenu"></div>
+<div class="sz-autocomplete" data-role="autocomplete"></div>
+

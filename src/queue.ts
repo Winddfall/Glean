@@ -4,7 +4,7 @@ import { K } from "./core/constants.js";
 import { backoffMs, sleep, parseJsonLoose } from "./core/utils.js";
 import { buildPagePrompt, validateAnalysis } from "./core/prompt.js";
 import { Store, settings } from "./store.js";
-import { Panel } from "./panel.js";
+import { Panel } from "./panel/panel.js";
 import type { QueueItem, BrowseRecord, Goal } from "./types.js";
 
 let pumping = false;

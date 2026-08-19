@@ -4,7 +4,7 @@ import { K } from "./core/constants.js";
 import { fnv1a, truncate, uid } from "./core/utils.js";
 import { Store, settings, getState } from "./store.js";
 import { extractPage } from "./extract.js";
-import { Panel } from "./panel.js";
+import { Panel } from "./panel/panel.js";
 import { pumpQueue } from "./queue.js";
 import type { BrowseRecord, Goal, QueueItem } from "./types.js";
 

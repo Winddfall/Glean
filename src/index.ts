@@ -2,7 +2,7 @@
 
 import { K } from "./core/constants.js";
 import { Store } from "./store.js";
-import { Panel } from "./panel.js";
+import { Panel } from "./panel/panel.js";
 import { hookHistory, onLocationChange } from "./watcher.js";
 import { pumpQueue } from "./queue.js";
 
@@ -17,10 +17,8 @@ function boot(): void {
   setInterval(pumpQueue, 10000);
 }
 
-// 防重复注入。只要在浏览器环境就挂载 UI，不把 LLMBridge 作为启动门槛：
-// Tabbit 可能异步注入 LLMBridge（脚本执行后才可用），若在此处判断会静默退出、
-// 连入口按钮都不出现。队列分析依赖 LLMBridge，但 pumpQueue 内部有 try/catch
-// 退避，LLMBridge 未就绪时只会退避重试，不会崩溃；就绪后由定时器自动恢复。
+// 防重复注入。LLMBridge 就绪后才挂载 UI（Tabbit 注入 LLMBridge 后再加载本脚本）；
+// 若 LLMBridge 缺失则静默退出，连入口按钮都不出现。
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   if (!window.__shizhiLoaded && typeof LLMBridge !== "undefined") {
     window.__shizhiLoaded = true;
