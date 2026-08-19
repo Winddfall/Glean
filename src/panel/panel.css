@@ -42,6 +42,7 @@
 .sz-fab.dragging { cursor: grabbing; }
 .sz-fab:hover { background: var(--bg-hover); }
 .sz-fab.on { color: var(--accent); border-color: var(--accent-soft); }
+.sz-fab-logo { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; pointer-events: none; }
 .sz-pending { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); display: none; padding: 2px 8px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--bd-panel); box-shadow: 0 2px 8px rgba(0,0,0,.1); color: var(--tx-secondary); font-size: 11px; pointer-events: none; white-space: nowrap; }
 .sz-pending.on { display: inline-block; animation: sz-breathe 1.6s ease-in-out infinite; }
 @keyframes sz-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

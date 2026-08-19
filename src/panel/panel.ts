@@ -3,6 +3,7 @@
 
 import panelCss from "./panel.css";
 import panelHtml from "./panel.html";
+import fabLogoUrl from "./fab-logo.jpg";
 import {K} from "../core/constants.js";
 import {clamp, esc, uid} from "../core/utils.js";
 import {getState, settings, Store} from "../store.js";
@@ -224,6 +225,7 @@ export const Panel = {
     host.id = "shizhi-host";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `<style>${panelCss}</style>${panelHtml
+      .replace(/\{\{logo\}\}/g, `<img class="sz-fab-logo" src="${fabLogoUrl}" alt="拾知" draggable="false">`)
       .replace(/\{\{bulb\}\}/g, ICONS.bulb)
       .replace(/\{\{close\}\}/g, ICONS.x)
       .replace(/\{\{download\}\}/g, ICONS.download)
@@ -330,7 +332,7 @@ export const Panel = {
     else if (act === "ai-confirm") this.confirmAiDraft();
     else if (act === "ai-cancel") this.cancelAiDraft();
     else if (act === "goto-rec") this.gotoGroup(btn.dataset.id || "");
-    else if (act === "retry") this.retryRecord(btn.dataset.rid);
+    else if (act === "retry") this.retryRecord(btn.dataset.rid || "");
     else if (act === "rec-sort") this.toggleRecSort();
     else if (act === "enter-group") this.enterGroup(btn.dataset.key!);
     else if (act === "leave-group") this.leaveGroup();
