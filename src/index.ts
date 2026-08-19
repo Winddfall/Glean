@@ -3,7 +3,7 @@
 import { K } from "./core/constants.js";
 import { Store } from "./store.js";
 import { Panel } from "./panel.js";
-import { hookHistory, onLocationChange } from "./watcher.js";
+import { hookHistory, onLocationChange, captureCurrent } from "./watcher.js"; 
 import { pumpQueue } from "./queue.js";
 
 function boot(): void {
@@ -12,6 +12,7 @@ function boot(): void {
   addEventListener("storage", (e) => {
     if (e.key && e.key.indexOf("shizhi.") === 0) Panel.render(); // 同源多标签联动
   });
+  captureCurrent(); // 立即尝试记录当前页面
   onLocationChange();
   pumpQueue();
   setInterval(pumpQueue, 10000);

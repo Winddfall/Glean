@@ -6,10 +6,8 @@ import { esc, uid } from "./core/utils.js";
 import { Store, getState, settings } from "./store.js";
 import { onLocationChange } from "./watcher.js";
 import { pumpQueue } from "./queue.js";
-import type { Goal, Task, Subtask, Todo, BrowseRecord, Profile, Settings, QueueItem } from "./types.js";
-
-// 预设分析提示词（设置里可编辑、可重置回此预设）
-const PRESET_PROMPT = '你是"拾知"分析器。判断网页内容与用户工作目标的关系。';
+import { PRESET_ANALYSIS_PROMPT } from "./core/prompt.js";
+import type { Goal, Task, Subtask, Todo, BrowseRecord, MatchEntry, NoteEntry, KeyQuote, Profile, Settings, QueueItem } from "./types.js";
 
 // 内置站点搜索 URL 模板：用户填裸域名（无 {q} 且无路径）时，自动映射到该站点的搜索结果页，实现一键跳转并搜索。
 // 模板按域名匹配，命中后 {q} 会被搜索词替换。
@@ -155,7 +153,10 @@ button { font-family: inherit; }
 .sz-ai-ta { min-height: 44px; }
 .sz-ai-sub { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .sz-ai-sub-dot { color: var(--accent); flex: none; }
-.sz-ai-actions { display: flex; gap: 8px; margin-top: 8px; }
+.sz-ai-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.sz-ai-actions .sz-btn { padding: 4px 10px; font-size: 11px; }
+.sz-ai-actions .sz-btn.primary { background: var(--high); border-color: var(--high); }
+.sz-ai-actions .sz-btn.primary:hover { background: #15803d; }
 
 /* 记录列表 */
 .sz-rec { border-bottom: 1px solid #f5f5f4; }
@@ -280,11 +281,12 @@ const UI = {
   expandedFull: new Set<string>(),
   collapsed: new Set<string>(), // 折叠的分类节点（"g:{id}" | "t:{id}"）
   editingPrompt: null as null | string, // 正在编辑分类提示词的节点 id
-  aiDraft: null as null | { title: string; prompt: string; tasks: Task[] }, // AI 拆解待确认结果
+  aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
   todoOpen: false,
   exportOpen: false,
   exportGoalId: null as string | null,
   drag: null as null | { kind: "goal" | "task" | "subtask"; id: string; parent: string },
+  cloneTab: "https" as "https" | "ssh" | "ghcli",
 };
 
 function fmtDate(ts: number): string {
@@ -327,6 +329,49 @@ function relevanceOf(r: BrowseRecord): "high" | "med" | "low" | "none" {
 }
 
 const REL_RANK: Record<string, number> = { high: 0, med: 1, low: 2, none: 3 };
+
+// 记录过滤器格式：null | "slacking" | "goal:{id}" | "task:{id}" | "subtask:{id}"
+function matchMatchesFilter(m: MatchEntry, filter: string): boolean {
+  if (filter.startsWith("subtask:")) return m.subtaskId === filter.slice(8);
+  if (filter.startsWith("task:")) return m.taskId === filter.slice(5);
+  if (filter.startsWith("goal:")) return m.goalId === filter.slice(5);
+  return false;
+}
+
+function getFilterLabel(filter: string, goals: Goal[]): string {
+  if (filter === "slacking") return "摸鱼";
+  if (filter.startsWith("goal:")) {
+    const id = filter.slice(5);
+    return goals.find((g) => g.id === id)?.title || "未知目标";
+  }
+  if (filter.startsWith("task:")) {
+    const id = filter.slice(5);
+    for (const g of goals) {
+      const t = (g.tasks || []).find((x) => x.id === id);
+      if (t) return g.title + " → " + t.title;
+    }
+    return "未知任务";
+  }
+  if (filter.startsWith("subtask:")) {
+    const id = filter.slice(8);
+    for (const g of goals) {
+      for (const t of g.tasks || []) {
+        const s = (t.subtasks || []).find((x) => x.id === id);
+        if (s) return g.title + " → " + t.title + " → " + s.title;
+      }
+    }
+    return "未知子任务";
+  }
+  return filter;
+}
+
+function matchPath(m: MatchEntry, goals: Goal[]): string {
+  const g = goals.find((x) => x.id === m.goalId);
+  const t = g?.tasks?.find((x) => x.id === m.taskId);
+  const s = t?.subtasks?.find((x) => x.id === m.subtaskId);
+  const parts = [g?.title, t?.title, s?.title].filter(Boolean);
+  return parts.join(" → ") || "未分类";
+}
 
 function currentSuggestion(goals: Goal[]): { todo: Todo; goal: Goal } | null {
   for (const g of goals) {
@@ -375,7 +420,7 @@ function seedDemoData(): void {
         coverage: 40,
         status: "open",
         manual: false,
-        searchTerms: ["季度数据", "Q3 营收"],
+        searchTerms: ["季度财务数据", "营收统计", "业务报表"],
       },
       {
         id: "demo-todo2",
@@ -384,7 +429,7 @@ function seedDemoData(): void {
         coverage: 0,
         status: "open",
         manual: false,
-        searchTerms: ["排版规范"],
+        searchTerms: ["文档排版规范", "报告格式要求"],
       },
     ],
   };
@@ -402,7 +447,7 @@ function seedDemoData(): void {
         coverage: 10,
         status: "open",
         manual: false,
-        searchTerms: ["React Hooks"],
+        searchTerms: ["React Hooks 官方文档", "useEffect useState 教程"],
       },
     ],
   };
@@ -594,6 +639,8 @@ export const Panel = {
     else if (act === "todo-bar") { UI.todoOpen = !UI.todoOpen; this.renderTodo(); }
     else if (act === "todo-close") { UI.todoOpen = false; this.renderTodo(); }
     else if (act === "copy-term") this.copyText(btn.dataset.term || "");
+    else if (act === "clone-tab") { UI.cloneTab = (btn.dataset.tab || "https") as typeof UI.cloneTab; this.renderSettings(); }
+    else if (act === "copy-clone") this.copyText(btn.dataset.cmd || "");
     else if (act === "toggle-rec") this.toggleRecord(btn.closest<HTMLElement>(".sz-rec")?.dataset.id || "");
     else if (act === "rec-open") { window.open(btn.dataset.url || "", "_blank", "noopener"); }
     else if (act === "del-rec") this.delRecord(btn.dataset.rid || "");
@@ -613,8 +660,9 @@ export const Panel = {
     else if (act === "edit-prompt") { UI.editingPrompt = btn.dataset.id || ""; this.render(); }
     else if (act === "prompt-save") this.savePrompt(btn.dataset.pkind as "goal" | "task" | "subtask", btn.dataset.id || "");
     else if (act === "prompt-cancel") { UI.editingPrompt = null; this.render(); }
-    else if (act === "ai-confirm") this.confirmAiDraft();
-    else if (act === "ai-cancel") this.cancelAiDraft();
+else if (act === "ai-confirm") this.confirmAiDraft();
+else if (act === "ai-cancel") this.cancelAiDraft();
+else if (act === "ai-reparse") this.reparseGoalWithAI();
     else if (act === "reset-prompt") this.resetPrompt();
     else if (act === "clear-selected") this.clearSelected();
     else if (act === "ai-linked") this.aiFillLinkedUrl();
@@ -659,7 +707,7 @@ export const Panel = {
   onKeydown(e: KeyboardEvent): void {
     const t = e.target as Element;
     if (e.key === "Enter") {
-      if (t.matches('[data-role="goal-input"]')) this.addNode("goal", "");
+      if (t.matches('[data-role="goal-input"]')) this.parseGoalWithAI();
       else if (t.matches('[data-role="task-input"]')) this.addNode("task", (t as HTMLElement).dataset.pid || "");
       else if (t.matches('[data-role="sub-input"]')) this.addNode("subtask", (t as HTMLElement).dataset.pid || "");
     } else if (e.key === "Escape") {
@@ -715,18 +763,33 @@ export const Panel = {
     this.toast("AI 正在拆解需求…", "idle");
     try {
       const raw = await bridge.chat(
-        "请把下面的工作需求解析成一个目标，并拆解为任务和子任务（最多3级）。" +
-        "输出 JSON（不要输出其他内容）：" +
-        '{"title":"目标名称(<=20字)","prompt":"目标级分类提示词","tasks":[{"title":"任务名","prompt":"任务提示词","subtasks":[{"title":"子任务名"}]}]}' +
-        "规则：任务最多4个，每个任务的子任务最多3个；名称简洁明确。\n\n需求：" + text,
+        '你是目标拆解专家。用户会给你一句模糊的工作需求，你要把它拆成一个清晰目标，并拆成几条明确的"任务"（必要时再拆"子任务"），同时为每个层级写一段精准的定义提示词，供分类 AI 据此判断"一条网页记录是否属于这个分类"。\n\n' +
+        '[任务的定义]\n' +
+        '任务是明确、可持续执行的收集方向，像工作流里的一个步骤。命名用"动作+对象+目的"，动词开头，例如："查看最近 AI 新闻了解新技术/产品"、"检查最新论文了解技术细节"、"浏览新产品相关社区帖子"。\n' +
+        '下面这些不要当成任务：元任务或待确认项（如"确定收集方向""梳理思路""补充信息"），这些属于需要向用户追问澄清的问题，应写进 questions；与信息收集无关的行政动作。\n\n' +
+        '[定义提示词（prompt）的写法]\n' +
+        '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
+        '[输出格式]\n' +
+        '只输出 JSON（不要其他内容）：\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+        '[规则]\n' +
+        '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
+        '2. 需求足够明确时 questions 返回空数组 []。\n' +
+        '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
+        '4. 名称简洁，prompt 具体，不写空话。\n' +
+        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。\n\n' +
+        '需求：' + text,
         "json"
       );
       const obj = JSON.parse(raw);
       const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40);
+      const questions: string[] = (Array.isArray(obj.questions) ? obj.questions : [])
+        .map((q: unknown) => String(q).trim()).filter(Boolean).slice(0, 5);
       const tasks: Task[] = (Array.isArray(obj.tasks) ? obj.tasks : []).slice(0, 4).map((t: Record<string, unknown>) => ({
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
           title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
@@ -738,12 +801,79 @@ export const Panel = {
         title,
         prompt: typeof obj.prompt === "string" ? obj.prompt : "",
         tasks,
+        questions,
+        originalText: text,
       };
       if (input) input.value = "";
       this.render();
       this.toast("AI 已拆解，请确认或修改后创建", "idle");
     } catch (err) {
       this.toast("AI 拆解失败：" + String(err), "err");
+    }
+  },
+
+  async reparseGoalWithAI(): Promise<void> {
+    const d = UI.aiDraft;
+    if (!d || !d.questions.length) return;
+    const bridge = (window as unknown as { LLMBridge?: { chat(p: string, f?: string): Promise<string> } }).LLMBridge;
+    if (!bridge) {
+      this.toast("AI 暂不可用（未检测到 LLMBridge）。", "err");
+      return;
+    }
+    const answers: string[] = [];
+    for (let i = 0; i < d.questions.length; i++) {
+      const el = this.root!.querySelector(`[data-ai-answer="${i}"]`) as HTMLInputElement;
+      answers.push((el?.value || "").trim());
+    }
+    const context = d.questions.map((q, i) => `Q: ${q}\nA: ${answers[i] || "未回答"}`).join("\n\n");
+    this.toast("AI 正在重新拆解…", "idle");
+    try {
+      const raw = await bridge.chat(
+        '你是目标拆解专家。用户之前有需求，你提出了一些澄清问题，用户已回答。请结合原始需求和用户回答，重新拆解成目标、任务、子任务，并为每个层级生成精准的定义提示词，供分类 AI 据此判断"一条网页记录是否属于这个分类"。\n\n' +
+        '[原始需求]\n' + d.originalText + '\n\n' +
+        '[用户回答]\n' + context + '\n\n' +
+        '[任务的定义]\n' +
+        '任务是明确、可持续执行的收集方向，像工作流里的一个步骤。命名用"动作+对象+目的"，动词开头，例如："查看最近 AI 新闻了解新技术/产品"、"检查最新论文了解技术细节"、"浏览新产品相关社区帖子"。\n' +
+        '下面这些不要当成任务：元任务或待确认项（如"确定收集方向""梳理思路""补充信息"），这些属于需要向用户追问澄清的问题，应写进 questions；与信息收集无关的行政动作。\n\n' +
+        '[定义提示词（prompt）的写法]\n' +
+        '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
+        '[输出格式]\n' +
+        '只输出 JSON（不要其他内容）：\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+        '[规则]\n' +
+        '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
+        '2. 需求足够明确时 questions 返回空数组 []。\n' +
+        '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
+        '4. 名称简洁，prompt 具体，不写空话。\n' +
+        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。',
+        "json"
+      );
+      const obj = JSON.parse(raw);
+      const title = String(obj.title || d.originalText).trim().slice(0, 40) || d.originalText.slice(0, 40);
+      const questions: string[] = (Array.isArray(obj.questions) ? obj.questions : [])
+        .map((q: unknown) => String(q).trim()).filter(Boolean).slice(0, 5);
+      const tasks: Task[] = (Array.isArray(obj.tasks) ? obj.tasks : []).slice(0, 4).map((t: Record<string, unknown>) => ({
+        id: uid("t"),
+        title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
+        prompt: typeof t.prompt === "string" ? t.prompt : "",
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
+        subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
+          id: uid("s"),
+          title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
+          prompt: typeof s.prompt === "string" ? s.prompt : "",
+        })),
+      }));
+      UI.aiDraft = {
+        title,
+        prompt: typeof obj.prompt === "string" ? obj.prompt : "",
+        tasks,
+        questions,
+        originalText: d.originalText,
+      };
+      this.render();
+      this.toast("AI 已重新拆解，请确认或修改后创建", "idle");
+    } catch (err) {
+      this.toast("AI 重新拆解失败：" + String(err), "err");
     }
   },
 
@@ -842,8 +972,9 @@ export const Panel = {
       const pEl = root.querySelector(`[data-ai-task-prompt="${i}"]`) as HTMLTextAreaElement;
       const subtasks: Subtask[] = (t.subtasks || []).map((s, j) => {
         const sEl = root.querySelector(`[data-ai-sub="${i}-${j}"]`) as HTMLInputElement;
+        const spEl = root.querySelector(`[data-ai-sub-prompt="${i}-${j}"]`) as HTMLTextAreaElement;
         const st = (sEl?.value || "").trim();
-        return { id: s.id, title: st, prompt: s.prompt || "" };
+        return { id: s.id, title: st, prompt: (spEl?.value || "").trim() || s.prompt || "" };
       }).filter((s) => s.title);
       return {
         id: t.id,
@@ -852,8 +983,17 @@ export const Panel = {
         subtasks,
       };
     });
+    const todos: Todo[] = tasks.slice(0, 5).map((t, i) => ({
+      id: uid("todo"),
+      text: t.title,
+      contrib: {},
+      coverage: 0,
+      status: "open" as const,
+      manual: false,
+      searchTerms: (d.tasks[i]?.searchTerms || []).slice(0, 3),
+    }));
     const goals = Store.read<Goal[]>(K.goals, []);
-    goals.unshift({ id: uid("g"), title, status: "active", createdAt: Date.now(), prompt, tasks, todos: [] });
+    goals.unshift({ id: uid("g"), title, status: "active", createdAt: Date.now(), prompt, tasks, todos });
     Store.write(K.goals, goals);
     UI.aiDraft = null;
     this.render();
@@ -898,7 +1038,29 @@ export const Panel = {
 
   delRecord(rid: string): void {
     if (!confirm("删除这条记录？")) return;
-    Store.write(K.records, Store.read<BrowseRecord[]>(K.records, []).filter((r) => r.id !== rid));
+    const recs = Store.read<BrowseRecord[]>(K.records, []);
+    const sep = rid.indexOf("::");
+    if (sep > -1) {
+      // 删除某个分类下的单条记录（只删该 match）
+      const recordId = rid.slice(0, sep);
+      const matchIndex = parseInt(rid.slice(sep + 2), 10);
+      const rec = recs.find((r) => r.id === recordId);
+      if (rec && rec.matches && matchIndex >= 0 && matchIndex < rec.matches.length) {
+        rec.matches.splice(matchIndex, 1);
+        const remaining = rec.matches.filter((m) => m.relevance >= 50);
+        if (!remaining.length) {
+          // 没有其它分类命中了，整条记录删除
+          Store.write(K.records, recs.filter((r) => r.id !== recordId));
+        } else {
+          // 仍有其它分类，保留记录并让主分类指向剩余里相关度最高的
+          const top = remaining.reduce((a, b) => (b.relevance > a.relevance ? b : a));
+          rec.category = "goal:" + top.goalId;
+          Store.write(K.records, recs);
+        }
+      }
+    } else {
+      Store.write(K.records, recs.filter((r) => r.id !== rid));
+    }
     this.render();
   },
 
@@ -931,14 +1093,71 @@ export const Panel = {
   exportRecords(goalId: string | null): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const goals = Store.read<Goal[]>(K.goals, []);
-    let picked = recs;
-    if (goalId) picked = recs.filter((r) => r.category === "goal:" + goalId);
-    const groups: Record<string, BrowseRecord[]> = {};
-    for (const r of picked) {
-      const key = r.category || "other";
-      (groups[key] = groups[key] || []).push(r);
+
+    // 导出条目：一条记录 = 网页 × 分类（match）。同一网页命中多个分类时拆成多条，各自带独立分析。
+    interface ExportEntry {
+      id: string;
+      url: string;
+      title: string;
+      capturedAt: number;
+      summary: string;
+      keywords: string[];
+      goalId: string | null;
+      taskId: string | null;
+      subtaskId: string | null;
+      relevance: number;
+      reasoning: string;
+      findings: string[];
+      notes: NoteEntry[];
+      keyQuotes: KeyQuote[];
     }
-    const payload = { exportedAt: Date.now(), goals, records: groups };
+    const entries: ExportEntry[] = [];
+
+    for (const r of recs) {
+      const matches = (r.matches || []).filter((m) => m.relevance >= 50);
+      if (matches.length) {
+        for (const m of matches) {
+          if (goalId && m.goalId !== goalId) continue;
+          entries.push({
+            id: r.id + "::" + m.goalId + (m.taskId ? ":" + m.taskId : "") + (m.subtaskId ? ":" + m.subtaskId : ""),
+            url: r.url,
+            title: r.title,
+            capturedAt: r.capturedAt,
+            summary: r.summary,
+            keywords: r.keywords,
+            goalId: m.goalId,
+            taskId: m.taskId,
+            subtaskId: m.subtaskId,
+            relevance: m.relevance,
+            reasoning: m.reasoning,
+            findings: m.findings,
+            notes: m.notes,
+            keyQuotes: m.keyQuotes,
+          });
+        }
+      } else if (!goalId) {
+        // 旧版单分类记录 / 摸鱼记录：仅全量导出时包含
+        const legacyGoal = r.category.startsWith("goal:") ? r.category.slice(5) : null;
+        entries.push({
+          id: r.id,
+          url: r.url,
+          title: r.title,
+          capturedAt: r.capturedAt,
+          summary: r.summary,
+          keywords: r.keywords,
+          goalId: legacyGoal,
+          taskId: null,
+          subtaskId: null,
+          relevance: r.relevance || 0,
+          reasoning: "",
+          findings: r.findings || [],
+          notes: r.notes || [],
+          keyQuotes: [],
+        });
+      }
+    }
+
+    const payload = { exportedAt: Date.now(), goals, records: entries };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -948,14 +1167,31 @@ export const Panel = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     UI.exportOpen = false;
     this.renderExportPop();
-    this.toast("已导出 " + picked.length + " 条记录。可下载 skill 辅助本地 Agent 分析。", "ok");
+    this.toast("已导出 " + entries.length + " 条记录。可下载 skill 辅助本地 Agent 分析。", "ok");
   },
 
   clearByTarget(goalId: string | null): void {
     const label = goalId ? "该目标下的记录" : "全部数据（目标、记录、队列）";
     if (!confirm("清空" + label + "？此操作不可恢复。")) return;
     if (goalId) {
-      Store.write(K.records, Store.read<BrowseRecord[]>(K.records, []).filter((r) => r.category !== "goal:" + goalId));
+      // 按 match 语义清空：删除记录中属于该目标的 match；无剩余 match 则删除整条记录
+      const recs = Store.read<BrowseRecord[]>(K.records, []);
+      const next: BrowseRecord[] = [];
+      for (const r of recs) {
+        if (r.matches && r.matches.length) {
+          const rest = r.matches.filter((m) => m.goalId !== goalId);
+          if (rest.length) {
+            r.matches = rest;
+            const top = rest.reduce((a, b) => (b.relevance > a.relevance ? b : a));
+            r.category = "goal:" + top.goalId;
+            next.push(r);
+          }
+          // 全部 match 都属于该目标 → 整条删除
+        } else if (r.category !== "goal:" + goalId) {
+          next.push(r);
+        }
+      }
+      Store.write(K.records, next);
     } else {
       Object.values(K).forEach((k) => Store.del(k));
     }
@@ -988,7 +1224,7 @@ export const Panel = {
 
   resetPrompt(): void {
     saveSettings({ analysisPrompt: "" });
-    this.toast("分析提示词已重置为预设", "ok");
+    this.toast("已重置为预设提示词", "ok");
     this.render();
   },
 
@@ -1365,7 +1601,7 @@ export const Panel = {
       <div class="sz-row" draggable="true" data-kind="subtask" data-id="${esc(s.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该目标下的记录">${esc(s.title)}</span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="subtask:${esc(s.id)}" title="点击查看该子任务下的记录">${esc(s.title)}</span>
         <button class="sz-ibtn" data-act="edit-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn danger" data-act="del-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1378,7 +1614,7 @@ export const Panel = {
       <div class="sz-row" draggable="true" data-kind="task" data-id="${esc(t.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         ${caret("t:" + t.id, hasSub)}
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该目标下的记录">${esc(t.title)}</span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="task:${esc(t.id)}" title="点击查看该任务下的记录">${esc(t.title)}</span>
         <button class="sz-ibtn" data-act="edit-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn danger" data-act="del-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1402,7 +1638,7 @@ export const Panel = {
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <button class="sz-ibtn" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}" style="color:${g.status === "active" ? "var(--high)" : "var(--faint)"}">${ICONS.check}</button>
         ${caret("g:" + g.id, hasTasks)}
-        <span class="sz-ntitle clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该分类下的记录">${esc(g.title)}</span>
+        <span class="sz-ntitle clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="goal:${esc(g.id)}" title="点击查看该目标下的记录">${esc(g.title)}</span>
         <button class="sz-ibtn" data-act="edit-goal" data-id="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn danger" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1419,12 +1655,11 @@ export const Panel = {
 
     this.els.body.innerHTML = `
     <div class="sz-toolbar">
-      <input class="sz-input" data-role="goal-input" placeholder="输入需求，可 AI 拆解为目标/任务" maxlength="200">
-      <button class="sz-btn primary" data-act="add-goal">${ICONS.plus} 目标</button>
+      <input class="sz-input" data-role="goal-input" placeholder="输入完整需求，AI 自动拆解为目标/任务" style="flex:1">
       <button class="sz-btn" data-act="ai-parse-goal" title="用 AI 把需求解析成目标并拆解任务/子任务">${ICONS.bulb} AI 拆解</button>
     </div>
     ${this.renderAiDraft()}
-    ${goals.length ? '<div class="sz-note" style="margin-bottom:8px">拖拽左侧手柄可调整分类优先级，决定待办提示顺序 —— P0！全都是P0！</div>' : ""}
+    ${goals.length ? '<div class="sz-note" style="margin-bottom:8px">拖拽左侧手柄可调整分类优先级，决定待办提示顺序<br><i>"P0！全都是P0！"</i></div>' : ""}
     ${goals.map(goalRow).join("") || '<div class="sz-empty">暂无目标。添加目标后，拾知会自动归档浏览记录。</div>'}
     <div class="sz-node" style="opacity:.95">
       <div class="sz-row" style="cursor:default">
@@ -1446,14 +1681,24 @@ export const Panel = {
         <input class="sz-input" data-ai-task-title="${i}" value="${esc(t.title)}" placeholder="任务名称">
         <textarea class="sz-textarea sz-ai-ta" data-ai-task-prompt="${i}" rows="2" placeholder="任务级分类提示词（可选）">${esc(t.prompt || "")}</textarea>
         ${(t.subtasks || []).map((s, j) => `
-        <div class="sz-ai-sub">
-          <span class="sz-ai-sub-dot">·</span>
-          <input class="sz-input" data-ai-sub="${i}-${j}" value="${esc(s.title)}" placeholder="子任务名称">
+        <div class="sz-ai-sub" style="display:block">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
+            <span class="sz-ai-sub-dot" style="position:static">·</span>
+            <input class="sz-input" data-ai-sub="${i}-${j}" value="${esc(s.title)}" placeholder="子任务名称" style="flex:1">
+          </div>
+          <textarea class="sz-textarea sz-ai-ta" data-ai-sub-prompt="${i}-${j}" rows="1" placeholder="子任务级分类提示词（可选）">${esc(s.prompt || "")}</textarea>
         </div>`).join("")}
       </div>`).join("");
     return `
     <div class="sz-ai-confirm">
       <div class="sz-ai-head">AI 拆解结果 —— 请确认或修改后再创建</div>
+      ${d.questions && d.questions.length ? `<div style="background:#fff8e1;border:1px solid #f0d98c;border-radius:6px;padding:8px 10px;margin:8px 0;font-size:12px;color:#7a6a1f">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-weight:600">AI 需要你确认这些点，回答后点击右侧按钮重新拆解：</div>
+          <button class="sz-btn" data-act="ai-reparse" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border-color:var(--accent);white-space:nowrap">重新拆解</button>
+        </div>
+        ${d.questions.map((q, i) => `<div style="margin-bottom:6px"><div>· ${esc(q)}</div><input class="sz-input" data-ai-answer="${i}" placeholder="你的回答" style="margin-top:4px;font-size:12px;padding:4px 6px" value=""></div>`).join("")}
+      </div>` : ""}
       <label class="sz-label">目标名称</label>
       <input class="sz-input" data-ai-title value="${esc(d.title)}" placeholder="目标名称">
       <label class="sz-label">目标级分类提示词（告诉 AI 这个目标涵盖哪些内容，用于自动归档判断）</label>
@@ -1467,50 +1712,92 @@ export const Panel = {
   },
 
   renderRecords(): void {
-    let recs = Store.read<BrowseRecord[]>(K.records, []);
+    const allRecords = Store.read<BrowseRecord[]>(K.records, []);
     const goals = Store.read<Goal[]>(K.goals, []);
+    const filter = UI.recFilter;
+    const filterLabel = filter ? getFilterLabel(filter, goals) : "";
 
-    // 按目标过滤（从目标 Tab 点击分类跳转而来）
-    let filterGoal: Goal | null = null;
-    let filterLabel = "";
-    if (UI.recFilter) {
-      if (UI.recFilter === "slacking") {
-        filterLabel = "摸鱼";
-        recs = recs.filter((r) => r.category === "slacking");
-      } else {
-        filterGoal = goals.find((g) => g.id === UI.recFilter) || null;
-        filterLabel = filterGoal?.title || "";
-        recs = recs.filter((r) => r.category === "goal:" + UI.recFilter);
+    // 记录视图：一条记录 = 一个网页在某分类下的针对性分析
+    interface RecView {
+      key: string;              // 唯一标识（recordId 或 recordId::matchIndex），用于展开/收起/删除
+      rec: BrowseRecord;
+      match: MatchEntry | null; // null = 无分类分析（pending/error/slacking/legacy）
+    }
+    const views: RecView[] = [];
+
+    for (const r of allRecords) {
+      const rawMatches = r.matches || [];
+
+      if (filter === "slacking") {
+        if (r.category === "slacking") views.push({ key: r.id, rec: r, match: null });
+        continue;
+      }
+      if (filter) {
+        // 三级分类过滤：只保留匹配该分类的 match（key 用原始数组下标，删除时可对齐）
+        for (let i = 0; i < rawMatches.length; i++) {
+          const m = rawMatches[i];
+          if (m.relevance >= 50 && matchMatchesFilter(m, filter)) {
+            views.push({ key: r.id + "::" + i, rec: r, match: m });
+          }
+        }
+        continue;
+      }
+
+      // 无过滤：展示全部
+      let pushed = false;
+      for (let i = 0; i < rawMatches.length; i++) {
+        const m = rawMatches[i];
+        if (m.relevance >= 50) {
+          views.push({ key: r.id + "::" + i, rec: r, match: m });
+          pushed = true;
+        }
+      }
+      if (!pushed) {
+        views.push({ key: r.id, rec: r, match: null });
       }
     }
 
     // 排序
+    const viewRel = (v: RecView): number => v.match ? v.match.relevance : 0;
     if (UI.recSort === "relevance") {
-      recs = recs.slice().sort((a, b) => REL_RANK[relevanceOf(a)] - REL_RANK[relevanceOf(b)] || b.capturedAt - a.capturedAt);
+      views.sort((a, b) => viewRel(b) - viewRel(a) || b.rec.capturedAt - a.rec.capturedAt);
     } else {
-      recs = recs.slice().sort((a, b) => b.capturedAt - a.capturedAt);
-    }
-    // 搜索
-    const q = UI.recQuery.trim().toLowerCase();
-    if (q) {
-      recs = recs.filter((r) =>
-        (r.title + " " + r.url + " " + (r.summary || "") + " " + (r.keywords || []).join(" ")).toLowerCase().includes(q)
-      );
+      views.sort((a, b) => b.rec.capturedAt - a.rec.capturedAt);
     }
 
-    const relLabel: Record<string, string> = { high: "高", med: "中", low: "低" };
-    const recHtml = (r: BrowseRecord): string => {
-      const rel = relevanceOf(r);
-      const open = UI.expanded.has(r.id);
+    // 搜索
+    const q = UI.recQuery.trim().toLowerCase();
+    const filtered = q
+      ? views.filter((v) => {
+          const r = v.rec;
+          const m = v.match;
+          const matchText = m
+            ? (m.findings.join(" ") + " " + m.notes.map((n) => n.topic + " " + n.content).join(" ") + " " + m.reasoning)
+            : "";
+          return (r.title + " " + r.url + " " + (r.summary || "") + " " + (r.keywords || []).join(" ") + " " + matchText).toLowerCase().includes(q);
+        })
+      : views;
+
+    const relClassOf = (num: number): string => num >= 80 ? "high" : num >= 60 ? "med" : "low";
+
+    const recHtml = (v: RecView): string => {
+      const r = v.rec;
+      const m = v.match;
+      const open = UI.expanded.has(v.key);
       const isPending = r.category === "pending";
       const isError = r.category === "error";
+
       const relDot = isPending
         ? '<span class="sz-rel none breath" title="分析中"></span>'
         : isError
           ? '<span class="sz-rel low" title="分析失败"></span>'
-          : `<span class="sz-rel ${rel}" title="相关度${relLabel[rel] || ""}"></span>`;
+          : m
+            ? `<span class="sz-rel ${relClassOf(m.relevance)}" title="相关度 ${m.relevance}%"></span>`
+            : `<span class="sz-rel ${relevanceOf(r)}" title="相关度"></span>`;
+
       const url = r.url || "";
       let body = "";
+
       if (isPending) {
         body = `<div class="sz-pending-hint">正在分析中，请稍等片刻~</div>`;
       } else if (isError) {
@@ -1518,21 +1805,50 @@ export const Panel = {
           ${r.excerpt ? `<button class="sz-retry" data-act="retry" data-rid="${esc(r.id)}">重试分析</button>` : ""}`;
       } else {
         const longSummary = !!(r.summary && r.summary.length > 120);
-        const fullOpen = UI.expandedFull.has(r.id);
+        const fullOpen = UI.expandedFull.has(v.key);
+
+        // 分类路径（有 match 时显示）
+        const pathHtml = m
+          ? `<div style="font-size:11px;font-weight:600;color:var(--accent);margin:6px 0 4px">${esc(matchPath(m, goals))}</div>`
+          : "";
+
+        let matchHtml = "";
+        if (m) {
+          const findingsHtml = m.findings.length
+            ? `<div class="sz-findings"><div class="h">关键发现</div>${m.findings.map((f) => `<div class="sz-finding">${highlightText(f, q)}</div>`).join("")}</div>`
+            : "";
+          const notesHtml = m.notes.length
+            ? m.notes.map((n) => `<div class="sz-note"><div class="t">${esc(n.topic)}</div><div class="c">${highlightText(n.content, q)}</div></div>`).join("")
+            : "";
+          const quotesHtml = m.keyQuotes.length
+            ? `<div style="margin:6px 0;padding:6px 8px;background:#f8f9fa;border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--muted)">${m.keyQuotes.map((kq) => `<div style="margin-bottom:4px"><div style="font-style:italic;color:var(--text)">"${esc(kq.quote)}"</div><div style="font-size:11px;margin-top:2px">— ${esc(kq.context)}</div></div>`).join("")}</div>`
+            : "";
+          matchHtml = `
+            ${m.reasoning ? `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">${highlightText(m.reasoning, q)}</div>` : ""}
+            ${findingsHtml}
+            ${notesHtml}
+            ${quotesHtml}`;
+        } else {
+          matchHtml = `
+            ${(r.findings || []).length ? `<div class="sz-findings"><div class="h">关键发现</div>${r.findings!.map((f) => `<div class="sz-finding">${highlightText(f, q)}</div>`).join("")}</div>` : ""}
+            ${(r.notes || []).map((n) => `<div class="sz-note"><div class="t">${esc(n.topic)}</div><div class="c">${highlightText(n.content, q)}</div></div>`).join("")}`;
+        }
+
         body = `
           <div class="sz-rtitle">${highlightText(r.title || url, q)}</div>
           <div class="sz-rsum${longSummary && !fullOpen ? " clamp" : ""}">${highlightText(r.summary || r.preview || "", q)}</div>
-          ${longSummary ? `<button class="sz-rlink" data-act="toggle-full" data-rid="${esc(r.id)}">${fullOpen ? "收起" : "查看全文"}</button>` : ""}
+          ${longSummary ? `<button class="sz-rlink" data-act="toggle-full" data-rid="${esc(v.key)}">${fullOpen ? "收起" : "查看全文"}</button>` : ""}
           ${(r.keywords || []).slice(0, 8).map((k) => `<span class="sz-kw">${highlightText(k, q)}</span>`).join("")}
-          ${(r.findings || []).length ? `<div class="sz-findings"><div class="h">关键发现</div>${r.findings!.map((f) => `<div class="sz-finding">${highlightText(f, q)}</div>`).join("")}</div>` : ""}
-          ${(r.notes || []).map((n) => `<div class="sz-note"><div class="t">${esc(n.topic)}</div><div class="c">${highlightText(n.content, q)}</div></div>`).join("")}
+          ${pathHtml}
+          ${matchHtml}
           <div class="sz-racting">
             <a class="sz-rlink" data-act="rec-open" data-url="${esc(url)}" href="${esc(url)}" target="_blank" rel="noopener">${ICONS.ext} 打开原文</a>
-            <button class="sz-rbtn" data-act="del-rec" data-rid="${esc(r.id)}">${ICONS.trash} 删除</button>
+            <button class="sz-rbtn" data-act="del-rec" data-rid="${esc(v.key)}">${ICONS.trash} 删除</button>
           </div>`;
       }
+
       return `
-      <div class="sz-rec${open ? " open" : ""}" data-id="${esc(r.id)}">
+      <div class="sz-rec${open ? " open" : ""}" data-id="${esc(v.key)}">
         <div class="sz-rechead" data-act="toggle-rec">
           ${relDot}
           <span class="sz-rurl" title="${esc(url)}">${esc(r.title || url)}</span>
@@ -1543,17 +1859,17 @@ export const Panel = {
       </div>`;
     };
 
-    const filterBar = UI.recFilter
+    const filterBar = filter
       ? `<div class="sz-filterbar">
           <span class="sz-filter-name">当前分类：${esc(filterLabel)}</span>
           <button class="sz-btn" data-act="rec-back">返回全部</button>
         </div>`
       : "";
     const listHtml = `
-    ${q ? `<div class="sz-search-hint">搜索“${esc(q)}”，匹配 ${recs.length} 条记录</div>` : ""}
+    ${q ? `<div class="sz-search-hint">搜索“${esc(q)}”，匹配 ${filtered.length} 条记录</div>` : ""}
     ${filterBar}
-    ${recs.length
-      ? recs.map(recHtml).join("")
+    ${filtered.length
+      ? filtered.map(recHtml).join("")
       : '<div class="sz-empty">' + (Store.read<BrowseRecord[]>(K.records, []).length ? "没有匹配的记录" : "暂无记录") + "</div>"}`;
 
     // 搜索框固定不随输入重建，避免焦点丢失
@@ -1606,11 +1922,36 @@ export const Panel = {
   renderSettings(): void {
     const s = settings();
     const goals = Store.read<Goal[]>(K.goals, []);
-    const promptVal = s.analysisPrompt || PRESET_PROMPT;
+    const promptVal = s.analysisPrompt || PRESET_ANALYSIS_PROMPT;
+    const cloneTabs: Array<{ key: typeof UI.cloneTab; label: string; cmd: string }> = [
+      { key: "https", label: "HTTPS", cmd: "https://github.com/SkillRatLab/research-pilot.git" },
+      { key: "ssh", label: "SSH", cmd: "git@github.com:SkillRatLab/research-pilot.git" },
+      { key: "ghcli", label: "GitHub CLI", cmd: "gh repo clone SkillRatLab/research-pilot" },
+    ];
+    const activeClone = cloneTabs.find((t) => t.key === UI.cloneTab) || cloneTabs[0];
     this.els.body.innerHTML = `
     <div class="sz-field">
-      <span class="sz-label">记录分析提示词（留空则使用预设）</span>
-      <textarea class="sz-textarea" data-role="prompt-input" placeholder="${esc(PRESET_PROMPT)}">${esc(promptVal)}</textarea>
+      <span class="sz-label">使用说明</span>
+      <div class="sz-note">
+        开启工作模式后，浏览网页会自动记录并按目标归档；在目标里拆任务/子任务，浏览内容会逐步推进待办。
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="sz-btn" data-act="help">查看完整使用说明</button>
+      </div>
+    </div>
+    <div class="sz-field">
+      <span class="sz-label">配套 Skill 下载</span>
+      <div style="display:flex;gap:2px;margin-bottom:8px">
+        ${cloneTabs.map((t) => `<button class="sz-btn" data-act="clone-tab" data-tab="${t.key}" style="border-bottom:${t.key === activeClone.key ? "2px solid transparent" : "2px solid var(--accent)"};border-radius:4px 4px 0 0;background:${t.key === activeClone.key ? "#f0f0f0" : "transparent"};padding:4px 10px;font-size:13px">${esc(t.label)}</button>`).join("")}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f6f8fa;border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;font-size:12px;color:var(--text)">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(activeClone.cmd)}</span>
+        <button class="sz-btn" data-act="copy-clone" data-cmd="${esc(activeClone.cmd)}" style="padding:2px 8px;font-size:12px;flex-shrink:0">复制</button>
+      </div>
+    </div>
+    <div class="sz-field">
+      <span class="sz-label">记录处理提示词</span>
+      <textarea class="sz-textarea" data-role="prompt-input" placeholder="${esc(PRESET_ANALYSIS_PROMPT)}" rows="12">${esc(promptVal)}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button class="sz-btn primary" data-act="save-settings">保存</button>
         <button class="sz-btn" data-act="reset-prompt">重置为预设</button>
@@ -1626,15 +1967,6 @@ export const Panel = {
           ${goals.map((g) => `<option value="${esc(g.id)}">清空「${esc(g.title)}」</option>`).join("")}
         </select>
         <button class="sz-btn danger" data-act="clear-selected">执行清空</button>
-      </div>
-    </div>
-    <div class="sz-field">
-      <span class="sz-label">使用说明</span>
-      <div class="sz-note">
-        开启工作模式后，浏览网页会自动记录并按目标归档；在目标里拆任务/子任务，浏览内容会逐步推进待办。
-      </div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="sz-btn" data-act="help">查看使用说明</button>
       </div>
     </div>`;
   },
@@ -1675,11 +2007,18 @@ export const Panel = {
     let html = "";
     for (const g of activeGoals) {
       const todos = g.todos || [];
-      if (!todos.length) continue;
       html += `<div class="sz-sec">${esc(g.title)}</div>`;
+      if (!todos.length) {
+        html += '<div class="sz-empty" style="padding:4px 0">暂无待办建议</div>';
+        continue;
+      }
       html += todos.map((t) => {
         const pct = Math.round(Math.min(1, t.coverage || 0) * 100);
-        const terms = (t.searchTerms || []).slice(0, 3);
+        const rawTerms = t.searchTerms || [];
+        const terms = rawTerms.filter(Boolean).slice(0, 3);
+        const termRows = terms.length
+          ? terms.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px"><button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制" style="flex:1;justify-content:flex-start">${ICONS.copy} <span style="margin-left:3px">${esc(s)}</span></button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
+          : `<div style="color:var(--faint);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
           <div class="sz-todo-text">
@@ -1687,9 +2026,9 @@ export const Panel = {
             <span class="t">${esc(t.text)}</span>
           </div>
           <div class="sz-bar"><i style="width:${pct}%"></i></div>
-          <div class="sz-todo-meta">
+          <div class="sz-todo-meta" style="flex-direction:column;align-items:flex-start">
             <span>${pct}%</span>
-            ${terms.map((s) => `<button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制">${ICONS.copy} ${esc(s)}</button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">搜索</button>`).join("")}
+            ${termRows}
           </div>
         </div>`;
       }).join("");
