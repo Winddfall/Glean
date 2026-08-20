@@ -51,10 +51,12 @@ export async function pumpQueue(): Promise<void> {
 }
 
 async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
-  const goals = Store.read<Goal[]>(K.goals, []).filter((g) => g.status === "active");
+  const allGoals = Store.read<Goal[]>(K.goals, []);
+  const goals = allGoals.filter((g) => g.status === "active");
   const prompt = buildPagePrompt(
     { url: rec.url, title: rec.title, h1: rec.h1, meta: rec.meta, excerpt: item.excerpt },
-    goals
+    goals,
+    settings().analysisPrompt || undefined
   );
   const raw = await LLMBridge!.chat(prompt, "json");
   const res = validateAnalysis(parseJsonLoose(raw), goals);
@@ -63,7 +65,37 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
   rec.relevance = res.relevance;
   rec.findings = res.findings;
   rec.notes = res.notes;
+  rec.matches = res.matches;
   rec.category = res.relevant && res.goalId ? "goal:" + res.goalId : "slacking";
   const g = goals.find((x) => x.id === res.goalId);
-  Panel.toast(res.relevant && g ? "已归档至：" + g.title : "已归入摸鱼", res.relevant && g ? "ok" : "idle");
+  if (res.relevant && g) {
+    const extra = res.matches.length > 1 ? "（共命中 " + res.matches.length + " 个分类）" : "";
+    Panel.toast("已归档至：" + g.title + extra, "ok");
+    // 更新搜索词：将记录关键词补充到该 goal 下最需资料的 open todo
+    updateSearchTerms(g, rec);
+    Store.write(K.goals, allGoals);
+  } else {
+    Panel.toast("已归入摸鱼", "idle");
+  }
+}
+
+function updateSearchTerms(goal: Goal, rec: BrowseRecord): void {
+  const todos = goal.todos || [];
+  if (!todos.length) return;
+  // 找 coverage 最低且 open 的 todo
+  const candidates = todos.filter((t) => t.status === "open").sort((a, b) => (a.coverage || 0) - (b.coverage || 0));
+  const target = candidates[0];
+  if (!target) return;
+  const newTerms = (rec.keywords || []).map((k) => String(k).trim()).filter(Boolean);
+  if (!newTerms.length) return;
+  const existing = new Set((target.searchTerms || []).map((s) => String(s).trim()));
+  const arr = target.searchTerms || [];
+  for (const term of newTerms) {
+    if (!existing.has(term)) {
+      arr.push(term);
+      existing.add(term);
+    }
+  }
+  // 限制最多保留 6 个，保留最新的
+  target.searchTerms = arr.length > 6 ? arr.slice(-6) : arr;
 }

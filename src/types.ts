@@ -14,6 +14,7 @@ export interface Task {
   id: string;
   title: string;
   prompt?: string;          // 任务级提示词
+  searchTerms?: string[];   // 搜索词推荐
   subtasks?: Subtask[];     // 三级：子任务
 }
 
@@ -39,6 +40,22 @@ export interface NoteEntry {
   relevance: number; // 0-100
 }
 
+export interface KeyQuote {
+  quote: string;
+  context: string;
+}
+
+export interface MatchEntry {
+  goalId: string;
+  taskId: string | null;
+  subtaskId: string | null;
+  relevance: number; // 0-100
+  reasoning: string;
+  findings: string[];
+  notes: NoteEntry[];
+  keyQuotes: KeyQuote[];
+}
+
 export interface BrowseRecord {
   id: string;
   url: string;
@@ -55,6 +72,7 @@ export interface BrowseRecord {
   relevance?: number; // 0-100，LLM 分析产出
   findings?: string[]; // 关键发现
   notes?: NoteEntry[]; // 提取笔记
+  matches?: MatchEntry[]; // 多分类结果（goal/task/subtask 各自分析）
   excerpt?: string; // 分析失败时留存，供重试
 }
 
@@ -99,12 +117,13 @@ export interface PageData {
 
 export interface AnalysisResult {
   relevant: boolean;
-  goalId: string | null;
+  goalId: string | null; // 主分类（relevance 最高）
   summary: string;
   keywords: string[];
-  relevance: number; // 0-100
-  findings: string[]; // 关键发现
-  notes: NoteEntry[]; // 提取笔记
+  relevance: number; // 0-100 主分类相关度
+  findings: string[]; // 主分类关键发现（兼容现有渲染）
+  notes: NoteEntry[]; // 主分类笔记（兼容现有渲染）
+  matches: MatchEntry[]; // 完整多分类结果
 }
 
 // Tabbit 注入的全局对象
@@ -115,6 +134,6 @@ declare global {
     };
     __shizhiLoaded?: boolean;
   }
-  
+
   const LLMBridge: Window["LLMBridge"];
 }
