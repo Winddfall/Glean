@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "esbuild src/index.ts --bundle --format=iife --loader:.html=text --loader:.css=text --loader:.jpg=dataurl --outfile=glean.js",
-    "build:min": "esbuild src/index.ts --bundle --format=iife --minify --loader:.html=text --loader:.css=text --loader:.jpg=dataurl --outfile=glean.js",
-    "dev": "esbuild src/index.ts --bundle --format=iife --loader:.html=text --loader:.css=text --loader:.jpg=dataurl --outfile=glean.js --watch",
+    "build": "esbuild src/index.ts --bundle --format=iife --outfile=glean.js",
+    "build:min": "esbuild src/index.ts --bundle --format=iife --minify --outfile=glean.js",
+    "dev": "esbuild src/index.ts --bundle --format=iife --outfile=glean.js --watch",
     "test": "npm run build && node --test test/smoke.test.js"
   },
   "devDependencies": {

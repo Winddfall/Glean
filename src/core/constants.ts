@@ -10,9 +10,6 @@ export const K = {
   settings: "shizhi.settings",
   theme: "shizhi.theme",
   profile: "shizhi.profile",
-  recSort: "shizhi.recSort",
-  fabPos: "shizhi.fabPos",
-  panelSize: "shizhi.panelSize",
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
