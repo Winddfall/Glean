@@ -9,28 +9,11 @@ import {clamp, esc, uid} from "../core/utils.js";
 import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
+import { PRESET_ANALYSIS_PROMPT } from "../core/prompt.js";
 import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, Subtask, Task, Todo} from "../types.js";
 
-// 预设分析提示词（设置里可编辑、可重置回此预设）
-// 占位符：{{GOALS}}=目标列表 {{URL}}=网页URL {{TITLE}}=网页标题 {{H1}}=章节标题 {{META}}=页面简介 {{EXCERPT}}=正文摘录
-const PRESET_PROMPT = `你是"拾知"分析器。判断网页内容与用户工作目标的关系，只输出 JSON。
-
-[工作目标]
-{{GOALS}}
-
-[网页]
-URL: {{URL}}
-标题: {{TITLE}}
-章节: {{H1}}
-简介: {{META}}
-正文摘录:
-{{EXCERPT}}
-
-输出 JSON（不要输出任何其他内容）：
-{"relevant": true或false, "goalId": "目标id或null", "relevance": 0-100整数, "summary": "80字以内页面摘要", "keywords": ["关键词"], "findings": ["关键发现1", "关键发现2"], "notes": [{"topic": "主题", "content": "该主题下的笔记内容", "relevance": 0-100}]}
-
-规则：goalId 只能从上方工作目标的 id 中选最相关的一个；与任何目标都无关时 relevant=false、goalId=null、relevance 为0-60；拿不准时 relevant=false；relevance 表示该页面内容与工作目标的相关程度，0=完全无关，100=高度相关。
-findings 为2-5条关键发现，每条一句话概括页面中有价值的信息点；notes 为按主题拆分的结构化笔记，每个主题包含 topic(主题名称)、content(该主题下的详细笔记，2-3句话) 和 relevance(该主题与工作目标的相关度0-100)；notes 最多4个主题。`;
+// 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
+const PRESET_PROMPT = PRESET_ANALYSIS_PROMPT;
 
 // 内置站点搜索 URL 模板：用户填裸域名（无 {q} 且无路径）时，自动映射到该站点的搜索结果页，实现一键跳转并搜索。
 // 模板按域名匹配，命中后 {q} 会被搜索词替换。
@@ -209,6 +192,8 @@ export const Panel = {
   recQuery: "",
   recSort: "time" as "time" | "rel",
   recGroup: null as string | null, // 组内视图：当前选中分组的 key，null 为总览
+  recDeleteMode: false, // 记录多选删除模式
+  recSelected: new Set<string>(), // 多选删除中选中的记录项 key
   collapsed: new Set<string>(), // 折叠的分类节点（"g:{id}" | "t:{id}"）
   editingPrompt: null as null | string, // 正在编辑分类提示词的节点 id
   aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
@@ -229,6 +214,7 @@ export const Panel = {
     panel: HTMLDivElement;
     body: HTMLDivElement;
     toasts: HTMLDivElement;
+    toolbar: HTMLDivElement;
     rectools: HTMLDivElement;
     sortBtn: HTMLButtonElement;
     searchInput: HTMLInputElement;
@@ -260,6 +246,7 @@ export const Panel = {
       panel: shadow.querySelector(".sz-panel")!,
       body: shadow.querySelector(".sz-body")!,
       toasts: shadow.querySelector(".sz-toasts")!,
+      toolbar: shadow.querySelector('[data-role="rec-toolbar"]')!,
       rectools: shadow.querySelector(".sz-rectools")!,
       sortBtn: shadow.querySelector('[data-act="rec-sort"]')!,
       searchInput: shadow.querySelector('[data-role="rec-search"]')!,
@@ -352,13 +339,16 @@ export const Panel = {
     else if (act === "ai-confirm") this.confirmAiDraft();
     else if (act === "ai-cancel") this.cancelAiDraft();
     else if (act === "ai-reparse") this.reparseGoalWithAI();
-    else if (act === "goto-rec") this.gotoGroup(btn.dataset.id || "");
+    else if (act === "goto-rec") this.gotoGroup(btn.dataset.id || "", btn.dataset.kind || "");
     else if (act === "retry") this.retryRecord(btn.dataset.rid || "");
     else if (act === "rec-sort") this.toggleRecSort();
     else if (act === "enter-group") this.enterGroup(btn.dataset.key!);
     else if (act === "leave-group") this.leaveGroup();
     else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
-    else if (act === "del-record") this.delRecord(btn.dataset.rid!);
+    else if (act === "del-mode") this.toggleDeleteMode();
+    else if (act === "del-cancel") { this.recDeleteMode = false; this.recSelected.clear(); this.render(); }
+    else if (act === "del-confirm") this.confirmDeleteSelected();
+    else if (act === "rec-check") { const k = btn.dataset.key!; if ((btn as HTMLInputElement).checked) this.recSelected.add(k); else this.recSelected.delete(k); this.render(); }
     else if (act === "theme") this.toggleTheme();
     else if (act === "reset-prompt") this.resetPrompt();
     else if (act === "clear-selected") this.clearSelected();
@@ -387,10 +377,6 @@ export const Panel = {
       Store.write(K.state, st);
       this.render();
       if ((t as HTMLInputElement).checked) onLocationChange(); // 开启后立即评估当前页
-    } else if (t.matches('[data-role="reassign"]')) {
-      const recs = Store.read<BrowseRecord[]>(K.records, []);
-      const rec = recs.find((r) => r.id === t.dataset.rid);
-      if (rec) { rec.category = (t as HTMLSelectElement).value; Store.write(K.records, recs); this.render(); }
     } else if (t.matches('[data-role="linked-url"]')) {
       const v = (t as HTMLInputElement).value.trim();
       saveSettings({ linkedUrl: v });
@@ -711,15 +697,57 @@ export const Panel = {
   },
 
   // ---- 记录操作 ----
-  delRecord(rid: string): void {
-    const recs = Store.read<BrowseRecord[]>(K.records, []);
-    const idx = recs.findIndex((r) => r.id === rid);
-    if (idx < 0) return;
-    recs.splice(idx, 1);
-    Store.write(K.records, recs);
-    const q = Store.read<{ recordId: string }[]>(K.queue, []);
-    Store.write(K.queue, q.filter((item) => item.recordId !== rid));
+  toggleDeleteMode(): void {
+    this.recDeleteMode = !this.recDeleteMode;
+    if (!this.recDeleteMode) this.recSelected.clear();
     this.render();
+  },
+  confirmDeleteSelected(): void {
+    if (!this.recSelected.size) { this.toast("请先选择要删除的记录", "err"); return; }
+    if (!confirm(`确定删除选中的 ${this.recSelected.size} 条记录？此操作不可恢复。`)) return;
+    const recs = Store.read<BrowseRecord[]>(K.records, []);
+    const queue = Store.read<QueueItem[]>(K.queue, []);
+    const toDeleteWhole = new Set<string>();
+    const toRemoveMatch = new Map<string, string[]>(); // recordId -> [matchKeys]
+    for (const key of this.recSelected) {
+      if (key.includes(":")) {
+        const [rid] = key.split(":");
+        const arr = toRemoveMatch.get(rid) || [];
+        arr.push(key);
+        toRemoveMatch.set(rid, arr);
+      } else {
+        toDeleteWhole.add(key);
+      }
+    }
+    // 移除 match
+    for (const [rid, keys] of toRemoveMatch) {
+      const rec = recs.find((r) => r.id === rid);
+      if (!rec || !rec.matches) continue;
+      for (const key of keys) {
+        const [, gid, tid, sid] = key.split(":");
+        rec.matches = rec.matches.filter((m) => !(m.goalId === gid && (m.taskId || "") === tid && (m.subtaskId || "") === sid));
+      }
+      if (rec.matches.length === 0) {
+        toDeleteWhole.add(rid);
+      } else {
+        const top = rec.matches.sort((a, b) => b.relevance - a.relevance)[0];
+        rec.category = "goal:" + top.goalId;
+      }
+    }
+    // 删除整记录
+    for (const rid of toDeleteWhole) {
+      const idx = recs.findIndex((r) => r.id === rid);
+      if (idx >= 0) recs.splice(idx, 1);
+      const qi = queue.findIndex((q) => q.recordId === rid);
+      if (qi >= 0) queue.splice(qi, 1);
+    }
+    Store.write(K.records, recs);
+    Store.write(K.queue, queue);
+    const deletedCount = this.recSelected.size;
+    this.recSelected.clear();
+    this.recDeleteMode = false;
+    this.render();
+    this.toast("已删除 " + deletedCount + " 条记录", "ok");
   },
   retryRecord(rid: string): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
@@ -1106,18 +1134,25 @@ export const Panel = {
   enterGroup(key: string): void {
     this.recGroup = key;
     this.recQuery = "";
+    this.recDeleteMode = false;
+    this.recSelected.clear();
     this.els.searchInput.value = "";
     this.render();
   },
   leaveGroup(): void {
     this.recGroup = null;
     this.recQuery = "";
+    this.recDeleteMode = false;
+    this.recSelected.clear();
     this.els.searchInput.value = "";
     this.render();
   },
   // 从目标树点击分类跳转：切到记录 Tab 并进入对应分组
-  gotoGroup(id: string): void {
-    this.recGroup = id === "slacking" ? "slacking" : "goal:" + id;
+  gotoGroup(id: string, kind?: string): void {
+    if (id === "slacking") this.recGroup = "slacking";
+    else if (kind === "task") this.recGroup = "task:" + id;
+    else if (kind === "subtask") this.recGroup = "subtask:" + id;
+    else this.recGroup = "goal:" + id;
     this.recQuery = "";
     this.els.searchInput.value = "";
     if (this.tab !== "records") this.switchTab("records");
@@ -1126,6 +1161,8 @@ export const Panel = {
   switchTab(tab: string): void {
     if (tab === this.tab) return;
     this.tab = tab;
+    this.recDeleteMode = false;
+    this.recSelected.clear();
     if (this.panelSize) { this.render(); return; } // 已自定义尺寸：高度固定，跳过高度过渡
     const body = this.els.body;
     const prevH = body.offsetHeight;
@@ -1152,15 +1189,42 @@ export const Panel = {
     this.els.fab.classList.toggle("on", !!st.workMode);
     this.els.pending.classList.toggle("on", Store.read<QueueItem[]>(K.queue, []).length > 0);
     this.els.tabs.forEach((t) => t.classList.toggle("act", t.dataset.tab === this.tab));
-    // 组内视图的目标被删除时回退总览
-    if (this.recGroup && this.recGroup.startsWith("goal:") &&
-        !Store.read<Goal[]>(K.goals, []).some((g) => "goal:" + g.id === this.recGroup)) {
-      this.recGroup = null;
-      this.recQuery = "";
-      this.els.searchInput.value = "";
+    // 组内视图的分类被删除时回退总览
+    const goals = Store.read<Goal[]>(K.goals, []);
+    if (this.recGroup) {
+      if (this.recGroup.startsWith("goal:")) {
+        const gid = this.recGroup.slice(5);
+        if (!goals.some((g) => g.id === gid)) {
+          this.recGroup = null; this.recQuery = ""; this.els.searchInput.value = "";
+        }
+      } else if (this.recGroup.startsWith("task:")) {
+        const tid = this.recGroup.slice(5);
+        const hasTask = goals.some((g) => g.tasks?.some((t) => t.id === tid));
+        if (!hasTask) { this.recGroup = null; this.recQuery = ""; this.els.searchInput.value = ""; }
+      } else if (this.recGroup.startsWith("subtask:")) {
+        const sid = this.recGroup.slice(8);
+        const hasSub = goals.some((g) => g.tasks?.some((t) => t.subtasks?.some((s) => s.id === sid)));
+        if (!hasSub) { this.recGroup = null; this.recQuery = ""; this.els.searchInput.value = ""; }
+      }
     }
-    this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup); // 搜索/排序只在组内视图出现
+    this.els.toolbar.classList.toggle("on", this.tab === "records"); // 工具栏在记录标签页始终显示
+    this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup); // 搜索框只在组内视图出现
     this.els.sortBtn.textContent = this.recSort === "rel" ? "相关性 ↓" : "时间 ↓";
+    this.els.sortBtn.style.display = this.recGroup ? "" : "none"; // 排序只在组内视图有意义
+    const delBtn = this.root.querySelector('[data-act="del-mode"]') as HTMLButtonElement | null;
+    if (delBtn) {
+      if (this.recDeleteMode) {
+        delBtn.textContent = "确认删除(" + this.recSelected.size + ")";
+        delBtn.dataset.act = "del-confirm";
+        delBtn.classList.add("sz-del-confirm");
+      } else {
+        delBtn.textContent = "删除";
+        delBtn.dataset.act = "del-mode";
+        delBtn.classList.remove("sz-del-confirm");
+      }
+    }
+    const cancelBtn = this.root.querySelector('[data-act="del-cancel"]') as HTMLButtonElement | null;
+    if (cancelBtn) cancelBtn.style.display = this.recDeleteMode ? "" : "none";
     // 关联网址输入框同步（聚焦编辑时不打扰）
     const linked = this.root.querySelector('[data-role="linked-url"]') as HTMLInputElement | null;
     if (linked && linked !== this.root.activeElement) linked.value = settings().linkedUrl || "";
@@ -1201,7 +1265,7 @@ export const Panel = {
       <div class="sz-row" draggable="true" data-kind="subtask" data-id="${esc(s.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该目标下的记录">${esc(s.title)}</span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(s.id)}" data-kind="subtask" title="点击查看该子任务下的记录">${esc(s.title)}</span>
         <button class="sz-ibtn" data-act="edit-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1214,7 +1278,7 @@ export const Panel = {
       <div class="sz-row" draggable="true" data-kind="task" data-id="${esc(t.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         ${caret("t:" + t.id, hasSub)}
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该目标下的记录">${esc(t.title)}</span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(t.id)}" data-kind="task" title="点击查看该任务下的记录">${esc(t.title)}</span>
         <button class="sz-ibtn" data-act="edit-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1238,7 +1302,7 @@ export const Panel = {
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <button class="sz-ibtn" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}" style="color:${g.status === "active" ? "var(--accent)" : "var(--tx-muted)"}">${ICONS.check}</button>
         ${caret("g:" + g.id, hasTasks)}
-        <span class="sz-ntitle clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" title="点击查看该分类下的记录">${esc(g.title)}</span>
+        <span class="sz-ntitle clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
         <button class="sz-ibtn" data-act="edit-goal" data-id="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1265,7 +1329,7 @@ export const Panel = {
       <div class="sz-row" style="cursor:default">
         <span class="sz-grip" style="opacity:0">${ICONS.drag}</span>
         <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" title="点击查看摸鱼记录">摸鱼</span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">摸鱼</span>
       </div>
       <div class="sz-prompt" style="cursor:default" title="固定分类定义">不属于任何其它目标的记录</div>
     </div>`;
@@ -1339,24 +1403,18 @@ export const Panel = {
         g!.items.push({ record: r });
       }
     }
-    const activeGoals = goals.filter((g) => g.status === "active");
-    const selectHtml = (r: BrowseRecord): string => {
-      const known = r.category === "slacking" || activeGoals.some((g) => "goal:" + g.id === r.category);
-      const opts = ['<option value="" disabled ' + (known ? "" : "selected") + ">移动到…</option>"]
-        .concat(activeGoals.map((g) =>
-          `<option value="goal:${esc(g.id)}" ${r.category === "goal:" + g.id ? "selected" : ""}>${esc(g.title)}</option>`))
-        .concat([`<option value="slacking" ${r.category === "slacking" ? "selected" : ""}>摸鱼</option>`]);
-      return `<select class="sz-select" data-role="reassign" data-rid="${esc(r.id)}">${opts.join("")}</select>`;
-    };
     const recHtml = (item: RecItem, q: string): string => {
       const r = item.record;
       const m = item.match;
-      const movable = r.category === "slacking" || String(r.category).startsWith("goal:");
       const keywords = m ? [] : (r.keywords || []);
       const findings = m ? m.findings : (r.findings || []);
       const notes = m ? m.notes : (r.notes || []);
       const relevance = m ? m.relevance : r.relevance;
       const relTitle = m ? `相关度 ${relevance}/100（${m.reasoning ? m.reasoning.slice(0, 60) : ""}）` : (relevance == null ? "未分析" : `相关度 ${relevance}/100`);
+      const displayTitle = (m?.title || r.title || r.url);
+      const truncatedTitle = displayTitle.length > 28 ? displayTitle.slice(0, 28) + "…" : displayTitle;
+      const itemKey = m ? `${r.id}:${m.goalId}:${m.taskId || ""}:${m.subtaskId || ""}` : r.id;
+      const checked = this.recSelected.has(itemKey) ? "checked" : "";
       const kwHtml = keywords.length
         ? `<div class="sz-detail-sec">${keywords.slice(0, 8).map((k) => `<span class="sz-kw">${highlightText(k, q)}</span>`).join("")}</div>`
         : "";
@@ -1370,21 +1428,22 @@ export const Panel = {
         ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">📌 原文引用</div>${m.keyQuotes.map((kq) => `<blockquote class="sz-detail-quote">${esc(kq.quote)}<cite>${esc(kq.context)}</cite></blockquote>`).join("")}</div>`
         : "";
       const relCls = relevance == null ? "sz-rel-none" : relevance >= 60 ? "sz-rel-high" : relevance >= 30 ? "sz-rel-mid" : "sz-rel-low";
+      const relBadge = relevance != null ? `<span class="sz-rel-badge">${relevance}%</span>` : "";
       return `
-      <div class="sz-rec" data-id="${esc(r.id)}" ${m ? `data-match-goal="${esc(m.goalId)}"` : ""}>
+      <div class="sz-rec" data-id="${esc(r.id)}" data-item-key="${esc(itemKey)}" ${m ? `data-match-goal="${esc(m.goalId)}"` : ""}>
         <div class="sz-rec-head">
+          ${this.recDeleteMode ? `<input type="checkbox" class="sz-rec-check" data-act="rec-check" data-key="${esc(itemKey)}" ${checked}>` : ""}
           <span class="sz-rel ${relCls}" title="${esc(relTitle)}"></span>
           <div class="sz-rec-main" data-act="expand">
-            <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)}">${highlightText(r.title || r.url, q)}</a>
+            <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(displayTitle)}">${highlightText(truncatedTitle, q)}</a>
             <div class="sz-rmeta">${fmtDate(r.capturedAt)} · ${highlightText(r.summary || r.preview || "", q)}${m ? ` · 命中分类` : ""}</div>
           </div>
           <div class="sz-rec-actions">
+            ${relBadge}
             ${r.category === "pending" ? '<span class="sz-badge">分析中</span>' : ""}
-            <button class="sz-del-btn" data-act="del-record" data-rid="${esc(r.id)}" title="删除">${ICONS.x}</button>
           </div>
         </div>
         <div class="sz-rec-detail">${kwHtml}${findingsHtml}${notesHtml}${keyQuotesHtml}${r.category === "pending" ? "正在分析中，请稍等片刻~" : ""}</div>
-        ${movable ? selectHtml(r) : ""}
         ${r.category === "error" && r.excerpt ? `<button class="sz-retry" data-act="retry" data-rid="${esc(r.id)}">重试</button>` : ""}
       </div>`;
     };
@@ -1395,21 +1454,73 @@ export const Panel = {
       return (rb ?? -1) - (ra ?? -1) || b.record.capturedAt - a.record.capturedAt;
     };
 
-    // 组内视图：只显示选中的分组，搜索（仅目标分组）与排序都限定在组内
+    // 组内视图：只显示选中的分组，搜索与排序都限定在组内
     if (this.recGroup) {
-      const g = groups.find((x) => x.key === this.recGroup)!;
-      const isGoal = g.key.startsWith("goal:");
-      this.els.searchInput.style.display = isGoal ? "" : "none";
-      this.els.searchInput.placeholder = "搜索：" + g.name;
+      let items: RecItem[] = [];
+      let groupName = "";
+      let groupColor = "";
+      let isSearchable = false;
+      if (this.recGroup.startsWith("goal:")) {
+        const gid = this.recGroup.slice(5);
+        const g = goals.find((x) => x.id === gid);
+        groupName = g?.title || "未知目标";
+        groupColor = g?.status === "active" ? "#16a34a" : "#9ca3af";
+        isSearchable = true;
+        items = recs.flatMap((r) => {
+          if (r.category === "pending" || r.category === "error") return [];
+          if (r.matches?.length) return r.matches.filter((m) => m.goalId === gid).map((m) => ({ record: r, match: m }));
+          if (r.category === "goal:" + gid) return [{ record: r }];
+          return [];
+        });
+      } else if (this.recGroup.startsWith("task:")) {
+        const tid = this.recGroup.slice(5);
+        for (const g of goals) {
+          const t = g.tasks?.find((x) => x.id === tid);
+          if (t) { groupName = t.title; break; }
+        }
+        groupName = groupName || "未知任务";
+        groupColor = "#2563eb";
+        isSearchable = true;
+        items = recs.flatMap((r) => {
+          if (r.category === "pending" || r.category === "error") return [];
+          if (r.matches?.length) return r.matches.filter((m) => m.taskId === tid).map((m) => ({ record: r, match: m }));
+          return [];
+        });
+      } else if (this.recGroup.startsWith("subtask:")) {
+        const sid = this.recGroup.slice(8);
+        for (const g of goals) {
+          for (const t of g.tasks || []) {
+            const s = t.subtasks?.find((x) => x.id === sid);
+            if (s) { groupName = s.title; break; }
+          }
+          if (groupName) break;
+        }
+        groupName = groupName || "未知子任务";
+        groupColor = "#9333ea";
+        isSearchable = true;
+        items = recs.flatMap((r) => {
+          if (r.category === "pending" || r.category === "error") return [];
+          if (r.matches?.length) return r.matches.filter((m) => m.subtaskId === sid).map((m) => ({ record: r, match: m }));
+          return [];
+        });
+      } else {
+        const g = groups.find((x) => x.key === this.recGroup)!;
+        groupName = g.name;
+        groupColor = g.color;
+        isSearchable = g.key.startsWith("goal:");
+        items = g.items;
+      }
+      this.els.searchInput.style.display = isSearchable ? "" : "none";
+      this.els.searchInput.placeholder = "搜索：" + groupName;
       if (this.els.searchInput.value !== this.recQuery) this.els.searchInput.value = this.recQuery;
-      const q = isGoal ? this.recQuery.trim().toLowerCase() : "";
-      const items = (q ? g.items.filter((item) =>
+      const q = isSearchable ? this.recQuery.trim().toLowerCase() : "";
+      const filtered = (q ? items.filter((item) =>
         [item.record.title, item.record.url, item.record.summary, item.record.preview, (item.record.keywords || []).join(" "), item.match?.reasoning]
-          .some((s) => s && String(s).toLowerCase().includes(q))) : g.items)
+          .some((s) => s && String(s).toLowerCase().includes(q))) : items)
         .sort(this.recSort === "rel" ? byRel : byTime);
-      let html = `<div class="sz-sec"><button class="sz-back" data-act="leave-group" title="返回全部分组">${ICONS.back}返回</button><span class="sz-dot" style="background:${g.color}"></span><span class="sz-gtitle">${esc(g.name)}</span><span class="sz-count">${items.length}</span></div>`;
-      if (q) html += `<div class="sz-note" style="margin-bottom:6px">搜索"${esc(q)}"，匹配 ${items.length} 条记录</div>`;
-      html += items.slice(0, 50).map((item) => recHtml(item, q)).join("")
+      let html = `<div class="sz-sec"><button class="sz-back" data-act="leave-group" title="返回全部分组">${ICONS.back}返回</button><span class="sz-dot" style="background:${groupColor}"></span><span class="sz-gtitle">${esc(groupName)}</span><span class="sz-count">${filtered.length}</span></div>`;
+      if (q) html += `<div class="sz-note" style="margin-bottom:6px">搜索"${esc(q)}"，匹配 ${filtered.length} 条记录</div>`;
+      html += filtered.slice(0, 50).map((item) => recHtml(item, q)).join("")
         || (q ? '<div class="sz-empty">未找到匹配的记录</div>' : '<div class="sz-empty">该分组暂无记录</div>');
       this.els.body.innerHTML = html;
       return;

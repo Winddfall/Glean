@@ -49,6 +49,7 @@ export interface MatchEntry {
   goalId: string;
   taskId: string | null;
   subtaskId: string | null;
+  title?: string; // AI 针对该分类生成的标题（替代原始网页标题）
   relevance: number; // 0-100
   reasoning: string;
   findings: string[];

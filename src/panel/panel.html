@@ -31,9 +31,15 @@
     <button class="sz-tab" data-act="tab" data-tab="profile">画像</button>
     <button class="sz-tab" data-act="tab" data-tab="settings">设置</button>
   </div>
+  <div class="sz-toolbar" data-role="rec-toolbar">
+    <button class="sz-sortbtn" data-act="rec-sort" title="切换排序方式">时间 ↓</button>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="sz-del-btn sz-del-mode" data-act="del-mode" title="多选删除">删除</button>
+      <button class="sz-del-btn sz-del-cancel" data-act="del-cancel" title="取消选择" style="display:none">取消</button>
+    </div>
+  </div>
   <div class="sz-rectools">
     <input class="sz-input" data-role="rec-search" placeholder="搜索目标分组内的记录" maxlength="50" aria-label="搜索当前目标分组记录">
-    <button class="sz-sortbtn" data-act="rec-sort" title="切换排序方式"></button>
   </div>
   <div class="sz-body"></div>
   <div class="sz-foot">
