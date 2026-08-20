@@ -27,6 +27,7 @@ export interface Subtask {
 export interface Todo {
   id: string;
   text: string;
+  taskId?: string;                 // 关联的 task id（用于 coverage 更新）
   contrib: Record<string, number>; // 记录id → 贡献分
   coverage: number;
   status: "open" | "done";

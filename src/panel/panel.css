@@ -32,7 +32,8 @@
 .sz-sortbtn, .sz-sec-link, .sz-back,
 .sz-grow, .sz-rec, .sz-rec-detail, .sz-detail-note, .sz-badge, .sz-ibtn, .sz-del-btn,
 .sz-detail-sec-title, .sz-detail-finding, .sz-detail-note-content, .sz-rtitle, .sz-rmeta,
-.sz-pending, .sz-empty, .sz-mode, .sz-clear, .sz-gtitle, .sz-count, .sz-theme-btn {
+.sz-pending, .sz-empty, .sz-mode, .sz-clear, .sz-gtitle, .sz-count, .sz-theme-btn,
+.sz-rec-toolbar, .sz-goal-toolbar {
   transition: background-color .45s ease-in-out, color .45s ease-in-out, border-color .45s ease-in-out, box-shadow .45s ease-in-out;
 }
 
@@ -68,12 +69,16 @@
 .sz-add { display: flex; gap: 6px; margin-bottom: 8px; }
 .sz-input { flex: 1; padding: 6px 8px; border: 1px solid var(--bd-input); border-radius: 6px; font-size: 13px; outline: none; min-width: 0; background: var(--bg-input); color: var(--tx-primary); }
 .sz-input:focus { border-color: var(--accent); }
-.sz-toolbar { display: none; gap: 6px; padding: 8px 12px 0; align-items: center; }
-.sz-toolbar.on { display: flex; }
+.sz-rec-toolbar { display: none; gap: 6px; padding: 8px 12px 0; align-items: center; }
+.sz-rec-toolbar.on { display: flex; }
 .sz-rectools { display: none; gap: 6px; padding: 8px 12px 0; }
 .sz-rectools.on { display: flex; }
 .sz-sortbtn { flex: none; padding: 0 10px; border: 1px solid var(--bd-input); border-radius: 6px; background: var(--bg-input); color: var(--tx-secondary); font-size: 12px; cursor: pointer; white-space: nowrap; }
 .sz-sortbtn:hover { color: var(--tx-primary); background: var(--bg-hover); }
+.sz-sort-tabs { display: flex; gap: 2px; }
+.sz-sort-tab { padding: 4px 10px; border-radius: 6px; border: none; background: transparent; color: var(--tx-secondary); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.sz-sort-tab:hover { background: var(--bg-hover); color: var(--tx-primary); }
+.sz-sort-tab.act { background: var(--bg-tab-act); color: var(--tx-primary); font-weight: 600; }
 .sz-del-mode { font-size: 12px; padding: 0 10px; color: var(--tx-secondary); }
 .sz-del-mode:hover { color: var(--tx-danger); background: var(--bg-del-hover); }
 .sz-del-confirm { color: var(--tx-danger); background: var(--bg-del-hover); }
@@ -185,7 +190,7 @@
 .sz-export-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 /* ---- 目标三级树 ---- */
-.sz-toolbar { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.sz-goal-toolbar { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .sz-node { border-bottom: 1px dashed var(--bd-dash); }
 .sz-node:last-child { border-bottom: none; }
 .sz-row { display: flex; align-items: center; gap: 4px; padding: 5px 2px; border-radius: 6px; }

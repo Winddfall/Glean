@@ -1,11 +1,11 @@
 // 分析队列（串行/退避/持久化）与单次 LLM 合并调用
 
 import { K } from "./core/constants.js";
-import { backoffMs, sleep, parseJsonLoose } from "./core/utils.js";
+import { backoffMs, sleep, parseJsonLoose, uid } from "./core/utils.js";
 import { buildPagePrompt, validateAnalysis } from "./core/prompt.js";
 import { Store, settings } from "./store.js";
 import { Panel } from "./panel/panel.js";
-import type { QueueItem, BrowseRecord, Goal } from "./types.js";
+import type { QueueItem, BrowseRecord, Goal, Todo } from "./types.js";
 
 let pumping = false;
 
@@ -71,6 +71,10 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
   if (res.relevant && g) {
     const extra = res.matches.length > 1 ? "（共命中 " + res.matches.length + " 个分类）" : "";
     Panel.toast("已归档至：" + g.title + extra, "ok");
+    // 先给没有 todo 的旧 task 自动补齐 todo
+    syncTodos(g);
+    // 更新各命中 task 的 todo coverage
+    updateTodoCoverage(g, rec);
     // 更新搜索词：将记录关键词补充到该 goal 下最需资料的 open todo
     updateSearchTerms(g, rec);
     Store.write(K.goals, allGoals);
@@ -98,4 +102,40 @@ function updateSearchTerms(goal: Goal, rec: BrowseRecord): void {
   }
   // 限制最多保留 6 个，保留最新的
   target.searchTerms = arr.length > 6 ? arr.slice(-6) : arr;
+}
+
+function syncTodos(goal: Goal): void {
+  if (!goal.tasks?.length) return;
+  const existing = new Set((goal.todos || []).map((t) => t.taskId).filter(Boolean));
+  for (const task of goal.tasks) {
+    if (existing.has(task.id)) continue;
+    goal.todos = goal.todos || [];
+    const todo: Todo = {
+      id: uid("todo"),
+      text: task.title,
+      taskId: task.id,
+      contrib: {},
+      coverage: 0,
+      status: "open",
+      manual: false,
+    };
+    goal.todos.push(todo);
+  }
+}
+
+function updateTodoCoverage(goal: Goal, rec: BrowseRecord): void {
+  if (!rec.matches?.length) return;
+  for (const m of rec.matches) {
+    if (!m.taskId) continue;
+    const todo = goal.todos?.find((t) => t.taskId === m.taskId);
+    if (!todo) continue;
+    const inc = (m.relevance / 100) * 0.15; // 每次命中最多增加 15%
+    todo.coverage = Math.min(1, (todo.coverage || 0) + inc);
+    // coverage 达到 90% 自动标记为完成，让后续搜索词替补给下一个 todo
+    if (todo.coverage >= 0.9) todo.status = "done";
+  }
+  // 额外：遍历所有 open todo，coverage 已 >= 0.9 的也一并标记（兜底，防止遗漏）
+  for (const t of goal.todos || []) {
+    if (t.status === "open" && t.coverage >= 0.9) t.status = "done";
+  }
 }

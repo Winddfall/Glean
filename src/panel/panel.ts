@@ -93,12 +93,20 @@ function highlightText(text: string, query: string): string {
   return result;
 }
 
-// 当前待办建议：取第一个进行中目标里第一个未完成且覆盖度不足的 todo
-function currentSuggestion(goals: Goal[]): { todo: Todo; goal: Goal } | null {
+// 当前待办建议：取优先级最高的（数组最前的）进行中目标里第一个未完成且覆盖度不足的 todo
+// 若目标没有 todo（未拆解任务），则返回目标标题本身作为建议
+// 优先级与目标数组顺序直接挂钩；拖拽调整目标顺序即调整优先级
+function currentSuggestion(goals: Goal[]): { text: string; goal: Goal } | null {
   for (const g of goals) {
     if (g.status !== "active") continue;
-    for (const t of g.todos || []) {
-      if (t.status === "open" && (t.coverage || 0) < 0.9) return { todo: t, goal: g };
+    const todos = g.todos || [];
+    for (const t of todos) {
+      if (t.status === "open" && (t.coverage || 0) < 0.9) return { text: t.text, goal: g };
+    }
+    // 没有 todo 的 active goal：用第一个 task 标题或目标标题作为建议
+    if (!todos.length) {
+      const firstTask = g.tasks?.[0];
+      return { text: firstTask ? firstTask.title : g.title, goal: g };
     }
   }
   return null;
@@ -139,8 +147,8 @@ function seedDemoData(): void {
       { id: "demo-t2", title: "撰写正文" },
     ],
     todos: [
-      { id: "demo-todo1", text: "收集季度数据", contrib: {}, coverage: 40, status: "open", manual: false, searchTerms: ["季度数据", "Q3 营收"] },
-      { id: "demo-todo2", text: "校对排版", contrib: {}, coverage: 0, status: "open", manual: false, searchTerms: ["排版规范"] },
+      { id: "demo-todo1", text: "收集季度数据", taskId: "demo-t1", contrib: {}, coverage: 40, status: "open", manual: false, searchTerms: ["季度数据", "Q3 营收"] },
+      { id: "demo-todo2", text: "校对排版", taskId: "demo-t2", contrib: {}, coverage: 0, status: "open", manual: false, searchTerms: ["排版规范"] },
     ],
   };
   const g2: Goal = {
@@ -150,7 +158,7 @@ function seedDemoData(): void {
     createdAt: Date.now() - 86400000 * 5,
     tasks: [],
     todos: [
-      { id: "demo-todo3", text: "看完官方文档 Hooks 章节", contrib: {}, coverage: 10, status: "open", manual: false, searchTerms: ["React Hooks"] },
+      { id: "demo-todo3", text: "看完官方文档 Hooks 章节", taskId: "demo-t3", contrib: {}, coverage: 10, status: "open", manual: false, searchTerms: ["React Hooks"] },
     ],
   };
   Store.write(K.goals, [g1, g2]);
@@ -341,7 +349,14 @@ export const Panel = {
     else if (act === "ai-reparse") this.reparseGoalWithAI();
     else if (act === "goto-rec") this.gotoGroup(btn.dataset.id || "", btn.dataset.kind || "");
     else if (act === "retry") this.retryRecord(btn.dataset.rid || "");
-    else if (act === "rec-sort") this.toggleRecSort();
+    else if (act === "rec-sort") {
+      const sort = btn.dataset.sort as "time" | "rel";
+      if (sort && sort !== this.recSort) {
+        this.recSort = sort;
+        Store.write(K.recSort, this.recSort);
+        this.render();
+      }
+    }
     else if (act === "enter-group") this.enterGroup(btn.dataset.key!);
     else if (act === "leave-group") this.leaveGroup();
     else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
@@ -411,7 +426,11 @@ export const Panel = {
       const title = (input?.value || "").trim();
       if (!g || !title) return;
       g.tasks = g.tasks || [];
-      g.tasks.push({ id: uid("t"), title, prompt: "", subtasks: [] });
+      const taskId = uid("t");
+      g.tasks.push({ id: taskId, title, prompt: "", subtasks: [] });
+      // 同步创建对应的 todo，让 todo 系统生效
+      g.todos = g.todos || [];
+      g.todos.push({ id: uid("todo"), text: title, taskId, contrib: {}, coverage: 0, status: "open", manual: false });
       Store.write(K.goals, goals);
       if (input) input.value = "";
     } else {
@@ -656,6 +675,7 @@ export const Panel = {
     const todos: Todo[] = tasks.slice(0, 5).map((t, i) => ({
       id: uid("todo"),
       text: t.title,
+      taskId: t.id,
       contrib: {},
       coverage: 0,
       status: "open" as const,
@@ -1126,11 +1146,6 @@ export const Panel = {
   },
 
   // ---- 组内视图 ----
-  toggleRecSort(): void {
-    this.recSort = this.recSort === "rel" ? "time" : "rel";
-    Store.write(K.recSort, this.recSort);
-    this.render();
-  },
   enterGroup(key: string): void {
     this.recGroup = key;
     this.recQuery = "";
@@ -1163,22 +1178,11 @@ export const Panel = {
     this.tab = tab;
     this.recDeleteMode = false;
     this.recSelected.clear();
-    if (this.panelSize) { this.render(); return; } // 已自定义尺寸：高度固定，跳过高度过渡
-    const body = this.els.body;
-    const prevH = body.offsetHeight;
-    const chrome = this.els.panel.offsetHeight - prevH; // 头部/标签栏/底部等固定高度
-    this.render(); // 更新 tab 激活态并替换内容
-    // 高度丝滑过渡：固定旧高度 → 过渡到新内容的自然高度（受 70vh 上限约束）
-    const newH = Math.max(120, Math.min(body.scrollHeight, Math.round(window.innerHeight * 0.7) - chrome));
+    // 清理可能残留的高度动画状态
     clearTimeout(this.animTimer);
-    body.classList.add("sz-animH");
-    body.style.height = prevH + "px";
-    void body.offsetHeight; // 强制 reflow，确保过渡生效
-    body.style.height = newH + "px";
-    this.animTimer = setTimeout(() => {
-      body.classList.remove("sz-animH");
-      body.style.height = "";
-    }, 220);
+    this.els.body.classList.remove("sz-animH");
+    this.els.body.style.height = "";
+    this.render();
   },
 
   // ---- 渲染 ----
@@ -1207,11 +1211,20 @@ export const Panel = {
         if (!hasSub) { this.recGroup = null; this.recQuery = ""; this.els.searchInput.value = ""; }
       }
     }
+    // 先渲染 body 内容，避免 toolbar 状态变化和 body 替换之间出现布局不一致的中间态
+    if (this.tab === "goals") this.renderGoals();
+    else if (this.tab === "records") this.renderRecords();
+    else if (this.tab === "profile") this.renderProfile();
+    else this.renderSettings();
+    this.renderTodo();
+    // 再更新 toolbar 状态（与 body 渲染分开，避免闪烁）
     this.els.toolbar.classList.toggle("on", this.tab === "records"); // 工具栏在记录标签页始终显示
     this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup); // 搜索框只在组内视图出现
-    this.els.sortBtn.textContent = this.recSort === "rel" ? "相关性 ↓" : "时间 ↓";
-    this.els.sortBtn.style.display = this.recGroup ? "" : "none"; // 排序只在组内视图有意义
-    const delBtn = this.root.querySelector('[data-act="del-mode"]') as HTMLButtonElement | null;
+    // 排序 tab 激活态
+    this.root.querySelectorAll('[data-act="rec-sort"]').forEach((btn) => {
+      btn.classList.toggle("act", btn.dataset.sort === this.recSort);
+    });
+    const delBtn = this.root.querySelector('[data-role="del-btn"]') as HTMLButtonElement | null;
     if (delBtn) {
       if (this.recDeleteMode) {
         delBtn.textContent = "确认删除(" + this.recSelected.size + ")";
@@ -1223,16 +1236,11 @@ export const Panel = {
         delBtn.classList.remove("sz-del-confirm");
       }
     }
-    const cancelBtn = this.root.querySelector('[data-act="del-cancel"]') as HTMLButtonElement | null;
+    const cancelBtn = this.root.querySelector('[data-role="del-cancel"]') as HTMLButtonElement | null;
     if (cancelBtn) cancelBtn.style.display = this.recDeleteMode ? "" : "none";
     // 关联网址输入框同步（聚焦编辑时不打扰）
     const linked = this.root.querySelector('[data-role="linked-url"]') as HTMLInputElement | null;
     if (linked && linked !== this.root.activeElement) linked.value = settings().linkedUrl || "";
-    if (this.tab === "goals") this.renderGoals();
-    else if (this.tab === "records") this.renderRecords();
-    else if (this.tab === "profile") this.renderProfile();
-    else this.renderSettings();
-    this.renderTodo();
   },
   renderGoals(): void {
     const goals = Store.read<Goal[]>(K.goals, []);
@@ -1317,13 +1325,13 @@ export const Panel = {
       </div>`}
     </div>`};
 
-    this.els.body.innerHTML = `
-      <div class="sz-toolbar">
-      <input class="sz-input" data-role="goal-input" placeholder="输入需求，AI 自动拆解" style="flex:1">
-      <button class="sz-btn" data-act="ai-parse-goal" title="用 AI 把需求解析成目标并拆解任务/子任务">${ICONS.bulb} AI 拆解</button>
-    </div>
+this.els.body.innerHTML = `
+<div class="sz-goal-toolbar">
+<input class="sz-input" data-role="goal-input" placeholder="输入需求，AI 自动拆解" style="flex:1">
+<button class="sz-btn" data-act="ai-parse-goal" title="用 AI 把需求解析成目标并拆解任务/子任务">${ICONS.bulb} AI 拆解</button>
+</div>
     ${this.renderAiDraft()}
-    ${goals.length ? '<div class="sz-note" style="margin-bottom:8px">拖拽左侧手柄可调整分类优先级，决定待办提示顺序 —— P0！全都是P0！</div>' : ""}
+    ${goals.length ? '<div class="sz-note" style="margin-bottom:8px">拖拽左侧手柄可调整分类优先级，代办将提示优先级最高且未完成的任务。—— P0！全都是P0！</div>' : ""}
     ${goals.map(goalRow).join("") || '<div class="sz-empty">暂无目标。添加目标后，拾知会自动归档浏览记录。</div>'}
     <div class="sz-node" style="opacity:.95">
       <div class="sz-row" style="cursor:default">
@@ -1531,7 +1539,7 @@ export const Panel = {
     for (const g of groups) {
       if (!g.items.length) continue;
       html += `<div class="sz-sec sz-sec-link" data-act="enter-group" data-key="${esc(g.key)}" title="进入该分组"><span class="sz-dot" style="background:${g.color}"></span>${esc(g.name)}<span class="sz-count">${g.items.length}</span><span class="sz-chev">›</span></div>`;
-      html += g.items.sort(byTime).slice(0, 50).map((item) => recHtml(item, "")).join("");
+      html += g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("");
     }
     this.els.body.innerHTML = html || '<div class="sz-empty">暂无记录</div>';
   },
@@ -1641,7 +1649,7 @@ export const Panel = {
     const txt = this.root!.querySelector('[data-role="todo-txt"]') as HTMLElement;
     const goals = Store.read<Goal[]>(K.goals, []);
     const sug = currentSuggestion(goals);
-    txt.textContent = sug ? "当前建议：" + sug.todo.text : "待办";
+    txt.textContent = sug ? "当前建议：" + sug.text : "待办";
     pop.classList.toggle("open", this.todoOpen);
     if (!this.todoOpen) return;
 
@@ -1654,14 +1662,25 @@ export const Panel = {
     let html = "";
     for (const g of activeGoals) {
       const todos = g.todos || [];
-      if (!todos.length) continue;
+      const tasks = g.tasks || [];
       html += `<div class="sz-sec">${esc(g.title)}</div>`;
-      html += todos.map((t) => {
+      const items = todos.length ? todos : tasks.map((task) => ({
+        id: task.id,
+        text: task.title,
+        status: "open" as const,
+        coverage: 0,
+        searchTerms: [] as string[],
+      }));
+      if (!items.length) {
+        html += `<div class="sz-empty" style="font-size:12px;padding:8px 0">暂无待办，添加任务后自动生成</div>`;
+        continue;
+      }
+      html += items.map((t) => {
         const pct = Math.round(Math.min(1, t.coverage || 0) * 100);
         const rawTerms = t.searchTerms || [];
         const terms = rawTerms.filter(Boolean).slice(0, 3);
         const termRows = terms.length
-          ? terms.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px"><button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制" style="flex:1;justify-content:flex-start">${ICONS.copy} <span style="margin-left:3px">${esc(s)}</span></button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
+          ? terms.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;justify-content:space-between"><button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制" style="flex:1;justify-content:flex-start">${ICONS.copy} <span style="margin-left:3px">${esc(s)}</span></button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
           : `<div style="color:var(--tx-muted);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
