@@ -4,7 +4,7 @@ import { K } from "./core/constants.js";
 import { fnv1a, truncate, uid } from "./core/utils.js";
 import { Store, settings, getState } from "./store.js";
 import { extractPage } from "./extract.js";
-import { Panel } from "./panel.js";
+import { Panel } from "./panel/panel.js";
 import { pumpQueue } from "./queue.js";
 import type { BrowseRecord, Goal, QueueItem } from "./types.js";
 
@@ -50,40 +50,6 @@ function capture(): void {
   const recs = Store.read<BrowseRecord[]>(K.records, []);
   const now = Date.now();
   if (recs.some((r) => r.url === page.url)) return; // 去重闸
-  const rec: BrowseRecord = {
-    id: uid("r"),
-    url: page.url,
-    origin: page.origin,
-    title: page.title,
-    h1: page.h1,
-    meta: page.meta,
-    capturedAt: now,
-    excerptHash: hash,
-    preview: truncate(page.text.replace(/\s+/g, " "), 160),
-    category: "pending", summary: "", keywords: [],
-  };
-  recs.unshift(rec);
-  Store.write(K.records, recs.slice(0, settings().recordCap));
-  const q = Store.read<QueueItem[]>(K.queue, []);
-  q.push({ recordId: rec.id, excerpt: page.text, retries: 0, nextAt: 0 });
-  Store.write(K.queue, q);
-  Panel.render();
-  pumpQueue();
-}
-
-export function captureCurrent(): void {
-  const st = getState();
-  if (!st.workMode) return;
-  const goals = Store.read<Goal[]>(K.goals, []).filter((g) => g.status === "active");
-  if (!goals.length) return;
-  if (settings().excludedSites.some((x) => location.href.includes(x))) return;
-  if (document.visibilityState !== "visible") return;
-  const page = extractPage();
-  if (!page.text || page.text.length < 100) return;
-  const hash = fnv1a(page.url.split("#")[0] + "|" + page.text.slice(0, 500));
-  const recs = Store.read<BrowseRecord[]>(K.records, []);
-  const now = Date.now();
-  if (recs.some((r) => r.url === page.url)) return;
   const rec: BrowseRecord = {
     id: uid("r"),
     url: page.url,
