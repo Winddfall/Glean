@@ -103,6 +103,7 @@ keywords: ["AI", "大模型"]
 | `summary` | 正文 `## 摘要` |
 | `findings` | 正文 `## 关键发现`（每项一行 `- `） |
 | `notes` | 正文 `## 笔记`（每条 `### {topic}` + 内容） |
+| `matches` | 正文 `## 分类匹配`（每个匹配一节：`### {目标}/{任务}/{子任务}` 层级标题并注明 `goalId`/`taskId`/`subtaskId`（为 null 的层级省略）；节内保留该分类的 `title`、`relevance`、`reasoning`、`findings`、`notes`、`keyQuotes`） |
 
 > **执行约束（必须遵守）**：生成 `.md`、写入磁盘、同步 SQLite 这三件事必须用**一个脚本一次性批量完成**（推荐 Python 标准库 `os`/`json`/`sqlite3`，或 PowerShell 批量），**禁止逐条调用 write 工具**逐文件写入。
 
@@ -110,7 +111,7 @@ keywords: ["AI", "大模型"]
 
 用户要求"帮我汇总 XX 目标的记录"或"分析一下 摸鱼 里的资料"时：
 
-1. **查询 SQLite**：按 `goal_path` 或 `category` 筛选记录
+1. **查询 SQLite**：按 `goal_path` 筛选记录（目标记录为目标文件夹名，分类记录为 摸鱼/分析中/分析失败）
 2. **读取记录内容**：获取每条记录的摘要、发现、笔记
 3. **判断证据类型与置信度**：
    - 根据 `domain` 和页面内容判断证据类型
@@ -238,4 +239,4 @@ Agent 根据 `domain` 和页面内容判断每条记录的证据类型：
 **指定分类**
 > 用户："分析一下 摸鱼 里的资料"
 >
-> Agent：按 category="slacking" 筛选 → 生成报告
+> Agent：按 goal_path="摸鱼" 筛选 → 生成报告

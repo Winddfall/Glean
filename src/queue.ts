@@ -71,12 +71,18 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
   if (res.relevant && g) {
     const extra = res.matches.length > 1 ? "（共命中 " + res.matches.length + " 个分类）" : "";
     Panel.toast("已归档至：" + g.title + extra, "ok");
-    // 先给没有 todo 的旧 task 自动补齐 todo
-    syncTodos(g);
-    // 更新各命中 task 的 todo coverage
-    updateTodoCoverage(g, rec);
-    // 更新搜索词：将记录关键词补充到该 goal 下最需资料的 open todo
-    updateSearchTerms(g, rec);
+    // 一条记录可命中多个目标：逐目标同步 todo、更新 coverage 与搜索词
+    const matchedGoalIds = [...new Set(res.matches.map((m) => m.goalId))];
+    for (const goalId of matchedGoalIds) {
+      const goal = goals.find((x) => x.id === goalId);
+      if (!goal) continue;
+      // 先给没有 todo 的旧 task 自动补齐 todo
+      syncTodos(goal);
+      // 更新各命中 task 的 todo coverage
+      updateTodoCoverage(goal, rec);
+      // 更新搜索词：将记录关键词补充到该 goal 下最需资料的 open todo
+      updateSearchTerms(goal, rec);
+    }
     Store.write(K.goals, allGoals);
   } else {
     Panel.toast("已归入摸鱼", "idle");
