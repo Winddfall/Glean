@@ -1245,7 +1245,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup); // 搜索框只在组内视图出现
     // 排序 tab 激活态
     this.root.querySelectorAll('[data-act="rec-sort"]').forEach((btn) => {
-      btn.classList.toggle("act", btn.dataset.sort === this.recSort);
+      btn.classList.toggle("act", (btn as HTMLElement).dataset.sort === this.recSort);
     });
     const delBtn = this.root.querySelector('[data-role="del-btn"]') as HTMLButtonElement | null;
     if (delBtn) {
