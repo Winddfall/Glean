@@ -1,7 +1,7 @@
 // 分析队列（串行/退避/持久化）与单次 LLM 合并调用
 
 import { K } from "./core/constants.js";
-import { backoffMs, sleep, parseJsonLoose, uid } from "./core/utils.js";
+import { backoffMs, sleep, parseJsonLoose, uid, normalizeSearchTerm } from "./core/utils.js";
 import { buildPagePrompt, validateAnalysis } from "./core/prompt.js";
 import { Store, settings } from "./store.js";
 import { Panel } from "./panel/panel.js";
@@ -92,18 +92,38 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
 function updateSearchTerms(goal: Goal, rec: BrowseRecord): void {
   const todos = goal.todos || [];
   if (!todos.length) return;
-  // 找 coverage 最低且 open 的 todo
-  const candidates = todos.filter((t) => t.status === "open").sort((a, b) => (a.coverage || 0) - (b.coverage || 0));
-  const target = candidates[0];
-  if (!target) return;
-  const newTerms = (rec.keywords || []).map((k) => String(k).trim()).filter(Boolean);
+  // 把 rec.keywords 包装成 SearchTerm 对象（display=query=关键词）
+  const newTerms = (rec.keywords || []).map((k) => {
+    const q = String(k).trim();
+    return { display: q, query: q };
+  }).filter((t) => t.query);
+
+  // 只处理 open 状态的 todo
+  const openTodos = todos.filter((t) => t.status === "open");
+  if (!openTodos.length) return;
+
+  // 先确保每个 open todo 至少有基础搜索词（即使 newTerms 为空也保底）
+  for (const todo of openTodos) {
+    const arr = todo.searchTerms || [];
+    if (!arr.length) {
+      const base = (newTerms[0] && newTerms[0].query) || todo.text || goal.title || "搜索";
+      arr.push({ display: base, query: base });
+    }
+    todo.searchTerms = arr;
+  }
+
+  // 如果 newTerms 为空，到此为止
   if (!newTerms.length) return;
-  const existing = new Set((target.searchTerms || []).map((s) => String(s).trim()));
+
+  // 然后把新关键词补充给 coverage 最低的 todo（保持原有"聚焦最需要资料的 todo"策略）
+  openTodos.sort((a, b) => (a.coverage || 0) - (b.coverage || 0));
+  const target = openTodos[0];
+  const existing = new Set((target.searchTerms || []).map((s) => normalizeSearchTerm(s).query));
   const arr = target.searchTerms || [];
   for (const term of newTerms) {
-    if (!existing.has(term)) {
+    if (!existing.has(term.query)) {
       arr.push(term);
-      existing.add(term);
+      existing.add(term.query);
     }
   }
   // 限制最多保留 6 个，保留最新的
@@ -124,8 +144,21 @@ function syncTodos(goal: Goal): void {
       coverage: 0,
       status: "open",
       manual: false,
+      searchTerms: (task.searchTerms || []).slice(0, 3),
     };
     goal.todos.push(todo);
+  }
+  // 给已有但缺少 searchTerms 的 open todo 补充保底词（兼容旧数据）
+  for (const todo of goal.todos || []) {
+    if (todo.status === "open" && (!todo.searchTerms || !todo.searchTerms.length)) {
+      const task = goal.tasks.find((t) => t.id === todo.taskId);
+      if (task && task.searchTerms && task.searchTerms.length) {
+        todo.searchTerms = task.searchTerms.slice(0, 3);
+      } else {
+        const base = todo.text || goal.title || "搜索";
+        todo.searchTerms = [{ display: base, query: base }];
+      }
+    }
   }
 }
 
