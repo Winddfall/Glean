@@ -10,12 +10,17 @@ export interface Goal {
   todos: Todo[];
 }
 
+export interface SearchTerm {
+  display: string; // UI 显示标签（简洁）
+  query: string;   // 实际搜索/复制的完整表达式
+}
+
 export interface Task {
   id: string;
   title: string;
-  prompt?: string;          // 任务级提示词
-  searchTerms?: string[];   // 搜索词推荐
-  subtasks?: Subtask[];     // 三级：子任务
+  prompt?: string;                     // 任务级提示词
+  searchTerms?: (string | SearchTerm)[]; // 搜索词推荐（兼容旧字符串格式）
+  subtasks?: Subtask[];                // 三级：子任务
 }
 
 export interface Subtask {
@@ -27,12 +32,12 @@ export interface Subtask {
 export interface Todo {
   id: string;
   text: string;
-  taskId?: string;                 // 关联的 task id（用于 coverage 更新）
-  contrib: Record<string, number>; // 记录id → 贡献分
+  taskId?: string;                       // 关联的 task id（用于 coverage 更新）
+  contrib: Record<string, number>;       // 记录id → 贡献分
   coverage: number;
   status: "open" | "done";
   manual: boolean;
-  searchTerms?: string[];          // 搜索词推荐
+  searchTerms?: (string | SearchTerm)[]; // 搜索词推荐（兼容旧字符串格式）
 }
 
 export interface NoteEntry {
