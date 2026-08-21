@@ -5,7 +5,7 @@ import panelCss from "./panel.css";
 import panelHtml from "./panel.html";
 import fabLogoUrl from "./fab-logo.jpg";
 import {K} from "../core/constants.js";
-import {clamp, esc, uid} from "../core/utils.js";
+import {clamp, esc, uid, normalizeSearchTerm, enrichSearchTerm} from "../core/utils.js";
 import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
@@ -469,27 +469,37 @@ export const Panel = {
         '下面这些不要当成任务：元任务或待确认项（如"确定收集方向""梳理思路""补充信息"），这些属于需要向用户追问澄清的问题，应写进 questions；与信息收集无关的行政动作。\n\n' +
         '[定义提示词（prompt）的写法]\n' +
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
-        '[输出格式]\n' +
-        '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
-        '[规则]\n' +
-        '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
-        '2. 需求足够明确时 questions 返回空数组 []。\n' +
-        '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
-        '4. 名称简洁，prompt 具体，不写空话。\n' +
-        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。\n\n' +
-        '需求：' + text,
-        "json"
-      );
-      const obj = JSON.parse(raw);
-      const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40);
+'[输出格式]\n' +
+'只输出 JSON（不要其他内容）：\n' +
+'{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":[{"display":"显示标签","query":"完整搜索表达式"}],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+'[规则]\n' +
+'1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
+'2. 需求足够明确时 questions 返回空数组 []。\n' +
+'3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
+'4. 名称简洁，prompt 具体，不写空话。\n' +
+'5. 每个任务生成 1-3 个搜索词（searchTerms），每个搜索词包含两层：\n' +
+'   - display：UI 显示标签，8 字以内，简洁明了（如"AI应用案例"）。\n' +
+'   - query：实际复制/搜索时使用的完整表达式。学术场景用布尔运算符（引号精确匹配、AND/OR 组合、减号排除）；通用搜索用自然语言完整问句。\n' +
+'   搜索词要贴合任务内容，不同任务应有差异。\n\n' +
+'需求：' + text,
+"json"
+);
+const obj = JSON.parse(raw);
+const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40);
       const questions: string[] = (Array.isArray(obj.questions) ? obj.questions : [])
         .map((q: unknown) => String(q).trim()).filter(Boolean).slice(0, 5);
       const tasks: Task[] = (Array.isArray(obj.tasks) ? obj.tasks : []).slice(0, 4).map((t: Record<string, unknown>) => ({
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).slice(0, 3).map((s: unknown) => {
+          if (s && typeof s === "object" && !Array.isArray(s)) {
+            const so = s as Record<string, unknown>;
+            return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
+          }
+          return String(s).trim();
+        }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
           title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
@@ -538,13 +548,16 @@ export const Panel = {
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
         '[输出格式]\n' +
         '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":[{"display":"显示标签","query":"完整搜索表达式"}],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
         '[规则]\n' +
         '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
         '2. 需求足够明确时 questions 返回空数组 []。\n' +
         '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
         '4. 名称简洁，prompt 具体，不写空话。\n' +
-        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。',
+        '5. 每个任务生成 1-3 个搜索词（searchTerms），每个搜索词包含两层：\n' +
+        '   - display：UI 显示标签，8 字以内，简洁明了。\n' +
+        '   - query：实际复制/搜索时使用的完整表达式。学术场景用布尔运算符（引号精确匹配、AND/OR 组合、减号排除）；通用搜索用自然语言完整问句。\n' +
+        '   搜索词要贴合任务内容，不同任务应有差异。',
         "json"
       );
       const obj = JSON.parse(raw);
@@ -555,7 +568,14 @@ export const Panel = {
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).slice(0, 3).map((s: unknown) => {
+          if (s && typeof s === "object" && !Array.isArray(s)) {
+            const so = s as Record<string, unknown>;
+            return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
+          }
+          return String(s).trim();
+        }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
           title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
