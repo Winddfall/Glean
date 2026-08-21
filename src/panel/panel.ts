@@ -147,7 +147,7 @@ function seedDemoData(): void {
       { id: "demo-t2", title: "撰写正文" },
     ],
     todos: [
-      { id: "demo-todo1", text: "收集季度数据", taskId: "demo-t1", contrib: {}, coverage: 40, status: "open", manual: false, searchTerms: ["季度数据", "Q3 营收"] },
+      { id: "demo-todo1", text: "收集季度数据", taskId: "demo-t1", contrib: {}, coverage: 0.4, status: "open", manual: false, searchTerms: ["季度数据", "Q3 营收"] },
       { id: "demo-todo2", text: "校对排版", taskId: "demo-t2", contrib: {}, coverage: 0, status: "open", manual: false, searchTerms: ["排版规范"] },
     ],
   };
@@ -158,7 +158,7 @@ function seedDemoData(): void {
     createdAt: Date.now() - 86400000 * 5,
     tasks: [],
     todos: [
-      { id: "demo-todo3", text: "看完官方文档 Hooks 章节", taskId: "demo-t3", contrib: {}, coverage: 10, status: "open", manual: false, searchTerms: ["React Hooks"] },
+      { id: "demo-todo3", text: "看完官方文档 Hooks 章节", contrib: {}, coverage: 0.1, status: "open", manual: false, searchTerms: ["React Hooks"] },
     ],
   };
   Store.write(K.goals, [g1, g2]);
@@ -401,7 +401,10 @@ export const Panel = {
   onKeydown(e: KeyboardEvent): void {
     const t = e.target as Element;
     if (e.key === "Enter") {
-      if (t.matches('[data-role="goal-input"]')) this.parseGoalWithAI();
+      if (t.matches('[data-role="goal-input"]')) {
+        if (typeof (window as any).LLMBridge !== "undefined") this.parseGoalWithAI();
+        else this.addNode("goal", "");
+      }
       else if (t.matches('[data-role="task-input"]')) this.addNode("task", (t as HTMLElement).dataset.pid || "");
       else if (t.matches('[data-role="sub-input"]')) this.addNode("subtask", (t as HTMLElement).dataset.pid || "");
     } else if (e.key === "Escape") {
@@ -468,7 +471,7 @@ export const Panel = {
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
         '[输出格式]\n' +
         '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"]}]}\n\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
         '[规则]\n' +
         '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
         '2. 需求足够明确时 questions 返回空数组 []。\n' +
@@ -535,7 +538,7 @@ export const Panel = {
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
         '[输出格式]\n' +
         '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"]}]}\n\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
         '[规则]\n' +
         '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
         '2. 需求足够明确时 questions 返回空数组 []。\n' +
@@ -926,7 +929,7 @@ export const Panel = {
       "4. 右下角待办气泡会给出下一步建议，点击搜索词可一键跳转到关联网址搜索。\n" +
       "5. 点击目标里的任意分类，可跳转到该分类下的记录。\n" +
       "6. 在「设置」里可编辑分析提示词、清空记录、填写关联网址。\n" +
-      "   提示词编辑须知：自定义提示词必须保留 {{GOALS}}、{{URL}}、{{TITLE}}、{{EXCERPT}} 等占位符，以及「只输出 JSON + category 结构（category/relevance/findings/notes）」的格式约定，否则分析会失败。\n" +
+      "   提示词编辑须知：自定义提示词必须保留 {{GOALS}}、{{URL}}、{{TITLE}}、{{EXCERPT}} 等占位符，以及「只输出 JSON + matches 数组（每个元素含 goalId/taskId/subtaskId/relevance/findings/notes/keyQuotes）」的格式约定，否则分析会失败。\n" +
       "7. 底部「关联网址」框只需填站点名或网址，点旁边的 ✦ 图标，AI 会自动补全该站点的搜索参数，之后点搜索词即可直达结果页。\n\n" +
       "数据说明：拾知的记录保存在浏览器本地，按同源策略隔离，每个站点只能查看自己域下的记录。如需跨源汇总，请分别在各站点导出记录后，下载配套 skill 辅助本地 Agent 分析。\n\n" +
       "温馨提示：AI 分析可能存在偏差，重要结论请自行核对原始网页。拾知的所有记录都保存在本地浏览器，不会上传。"

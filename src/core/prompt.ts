@@ -83,12 +83,12 @@ export function buildPagePrompt(
   const template = (customPrompt || PRESET_ANALYSIS_PROMPT).trim();
 
   return template
-    .replace(/{{GOALS}}/g, goalLines || "（无目标）")
-    .replace(/{{URL}}/g, page.url)
-    .replace(/{{TITLE}}/g, page.title)
-    .replace(/{{H1}}/g, page.h1 ? `章节: ${page.h1}` : "")
-    .replace(/{{META}}/g, page.meta ? `简介: ${page.meta}` : "")
-    .replace(/{{EXCERPT}}/g, page.excerpt);
+    .replace(/{{GOALS}}/g, () => goalLines || "（无目标）")
+    .replace(/{{URL}}/g, () => page.url)
+    .replace(/{{TITLE}}/g, () => page.title)
+    .replace(/{{H1}}/g, () => (page.h1 ? `章节: ${page.h1}` : ""))
+    .replace(/{{META}}/g, () => (page.meta ? `简介: ${page.meta}` : ""))
+    .replace(/{{EXCERPT}}/g, () => page.excerpt);
 }
 
 // 结构校验与归一化：id 必须属于现有目标层级，主分类取相关度最高的一项

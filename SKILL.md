@@ -46,6 +46,7 @@ Windows 下 `~` 解析为 `%USERPROFILE%`。
 - `"slacking"` —— 摸鱼/无关内容
 - `"pending"` —— 分析中
 - `"error"` —— 分析失败
+- `"other"` —— 未分类/未知分类（fallback）
 
 ## .md 文件格式示例
 
@@ -79,11 +80,16 @@ keywords: ["AI", "大模型"]
 1. **解析 JSON**：读取顶层 `goals`（数组）和 `records`（按 category 分组的对象）
 2. **建立 id→标题 映射**：`goalId → goal.title`
 3. **遍历 `records` 的每个分类**，对每条记录：
-   - 用 `category` 解析归档路径：
+   - 用 `category` 解析归档路径（文件夹名和文件名必须做安全处理）：
      - `"goal:{goalId}"` → `~/.shizhi/archive/{目标名称}/记录标题_时间戳.md`
      - `"slacking"` → `~/.shizhi/archive/摸鱼/记录标题_时间戳.md`
      - `"pending"` → `~/.shizhi/archive/分析中/记录标题_时间戳.md`（可选）
      - `"error"` → `~/.shizhi/archive/分析失败/记录标题_时间戳.md`（可选）
+     - `"other"` → `~/.shizhi/archive/未分类/记录标题_时间戳.md`
+   - **路径安全**：`goal.title` 和 `record.title` 来自用户输入的 JSON，视为不可信。拼路径前必须：
+     1. 剔除 `..`、绝对路径前缀、控制字符、Windows 保留名（CON、PRN 等）
+     2. 将剩余非法字符（`\/:*?"<>|` 及空字符）替换为 `_`
+     3. 解析最终路径，确认其在 `~/.shizhi/archive/` 根目录内；若逃逸则拒绝写入并记录警告
    - 生成 `.md` 文件（frontmatter + 正文）
 4. **统一归档步骤**：
    - 如果本地已存在同名文件夹，直接合并（不覆盖已有文件，同名文件加时间戳后缀）
@@ -103,6 +109,11 @@ keywords: ["AI", "大模型"]
 | `summary` | 正文 `## 摘要` |
 | `findings` | 正文 `## 关键发现`（每项一行 `- `） |
 | `notes` | 正文 `## 笔记`（每条 `### {topic}` + 内容） |
+
+> **YAML frontmatter 安全编码**：frontmatter 的值（尤其是 `title`、`url`、`summary`）可能含引号、换行符、冒号等 YAML 特殊字符。生成 frontmatter 时必须使用安全标量格式：
+> - 字符串值统一用双引号包裹，内部双引号转义为 `\"`，换行符转义为 `\n`
+> - 或使用 YAML 块标量 `|` 格式包裹多行内容
+> - 数组（`keywords`）使用 JSON 格式 `["a", "b"]` 插入，避免 YAML 流式数组解析歧义
 
 > **执行约束（必须遵守）**：生成 `.md`、写入磁盘、同步 SQLite 这三件事必须用**一个脚本一次性批量完成**（推荐 Python 标准库 `os`/`json`/`sqlite3`，或 PowerShell 批量），**禁止逐条调用 write 工具**逐文件写入。
 
@@ -142,7 +153,7 @@ CREATE TABLE IF NOT EXISTS records (
     source_type TEXT,                      -- 证据类型推断值
     credibility_score INTEGER,             -- 0-100，Agent 评估
     credibility_reasoning TEXT,            -- 置信度评估理由
-    content_hash TEXT,                     -- 内容哈希，用于去重
+    content_hash TEXT UNIQUE,              -- 内容哈希，用于去重和幂等导入（重复哈希视为同一条记录）
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
