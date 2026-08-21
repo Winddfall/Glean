@@ -71,13 +71,16 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
   if (res.relevant && g) {
     const extra = res.matches.length > 1 ? "（共命中 " + res.matches.length + " 个分类）" : "";
     Panel.toast("已归档至：" + g.title + extra, "ok");
-    // 收集所有被命中的 goal（去重），对每个 goal 都执行 todo 同步、coverage 更新、搜索词补充
+    // 一条记录可命中多个目标：逐目标同步 todo、更新 coverage 与搜索词
     const matchedGoalIds = [...new Set(res.matches.map((m) => m.goalId).filter(Boolean))];
-    for (const gid of matchedGoalIds) {
-      const goal = goals.find((x) => x.id === gid);
+    for (const goalId of matchedGoalIds) {
+      const goal = goals.find((x) => x.id === goalId);
       if (!goal) continue;
+      // 先给没有 todo 的旧 task 自动补齐 todo
       syncTodos(goal);
+      // 更新各命中 task 的 todo coverage
       updateTodoCoverage(goal, rec);
+      // 更新搜索词：将记录关键词补充到该 goal 下最需资料的 open todo
       updateSearchTerms(goal, rec);
     }
     Store.write(K.goals, allGoals);
