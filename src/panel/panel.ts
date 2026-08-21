@@ -1676,6 +1676,47 @@ this.els.body.innerHTML = `
     pop.classList.toggle("open", this.todoOpen);
     if (!this.todoOpen) return;
 
+    // 自动修复：给所有 active goal 中缺少 searchTerms 的 open todo 保底并保存
+    let dataModified = false;
+    for (const g of goals) {
+      if (g.status !== "active") continue;
+      // 补齐缺失的 todos
+      if (g.tasks?.length) {
+        const existing = new Set((g.todos || []).map((t) => t.taskId).filter(Boolean));
+        for (const task of g.tasks) {
+          if (existing.has(task.id)) continue;
+          g.todos = g.todos || [];
+          g.todos.push({
+            id: uid("todo"),
+            text: task.title,
+            taskId: task.id,
+            contrib: {},
+            coverage: 0,
+            status: "open",
+            manual: false,
+            searchTerms: (task.searchTerms || []).slice(0, 3),
+          });
+          dataModified = true;
+        }
+      }
+      // 给缺少 searchTerms 的 open todo 保底（即使 Store 中为空也强制生成）
+      for (const todo of g.todos || []) {
+        if (todo.status === "open" && (!todo.searchTerms || !todo.searchTerms.length)) {
+          const task = g.tasks?.find((t) => t.id === todo.taskId);
+          if (task && task.searchTerms?.length) {
+            todo.searchTerms = task.searchTerms.slice(0, 3);
+          } else {
+            const base = todo.text || g.title || "搜索";
+            todo.searchTerms = [{ display: base, query: base }];
+          }
+          dataModified = true;
+        }
+      }
+    }
+    if (dataModified) {
+      Store.write(K.goals, goals);
+    }
+
     const list = this.root!.querySelector('[data-role="todo-list"]') as HTMLElement;
     const activeGoals = goals.filter((g) => g.status === "active");
     if (!activeGoals.length) {
@@ -1700,10 +1741,15 @@ this.els.body.innerHTML = `
       }
       html += items.map((t) => {
         const pct = Math.round(Math.min(1, t.coverage || 0) * 100);
-        const rawTerms = t.searchTerms || [];
-        const terms = rawTerms.filter(Boolean).slice(0, 3);
+        let rawTerms = t.searchTerms || [];
+        // 渲染级最终保底：绝不允许 open todo 在 UI 上缺失搜索词
+        if (t.status === "open" && !rawTerms.filter(Boolean).length) {
+          const base = t.text || g.title || "搜索";
+          rawTerms = [{ display: base, query: base }];
+        }
+        const terms = rawTerms.filter(Boolean).slice(0, 3).map((s) => enrichSearchTerm(normalizeSearchTerm(s)));
         const termRows = terms.length
-          ? terms.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;justify-content:space-between"><button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制" style="flex:1;justify-content:flex-start">${ICONS.copy} <span style="margin-left:3px">${esc(s)}</span></button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
+          ? terms.map((st) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;justify-content:space-between;width:100%"><button class="sz-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;background:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:3px">${ICONS.copy} <span style="margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(st.display)}</span></button><button class="sz-search-btn" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索" style="flex-shrink:0;border:none;background:none;color:var(--tx-link);font-size:11px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:3px">${ICONS.ext} 搜索</button></div>`).join("")
           : `<div style="color:var(--tx-muted);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
