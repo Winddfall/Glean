@@ -492,13 +492,14 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).slice(0, 3).map((s: unknown) => {
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => {
           if (s && typeof s === "object" && !Array.isArray(s)) {
             const so = s as Record<string, unknown>;
             return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
           }
           return String(s).trim();
         }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .slice(0, 3)
           .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
@@ -568,13 +569,14 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).slice(0, 3).map((s: unknown) => {
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => {
           if (s && typeof s === "object" && !Array.isArray(s)) {
             const so = s as Record<string, unknown>;
             return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
           }
           return String(s).trim();
         }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .slice(0, 3)
           .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
