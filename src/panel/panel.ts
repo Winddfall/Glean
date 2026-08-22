@@ -10,7 +10,7 @@ import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
 import { PRESET_ANALYSIS_PROMPT } from "../core/prompt.js";
-import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, Subtask, Task, Todo} from "../types.js";
+import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, SearchTerm, Subtask, Task, Todo} from "../types.js";
 
 // 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
 const PRESET_PROMPT = PRESET_ANALYSIS_PROMPT;
@@ -692,6 +692,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         id: t.id,
         title: (tEl?.value || "").trim() || "未命名任务",
         prompt: pEl?.value?.trim() || "",
+        searchTerms: (t.searchTerms || []).slice(0, 3),
         subtasks,
       };
     });
