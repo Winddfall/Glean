@@ -5,12 +5,12 @@ import panelCss from "./panel.css";
 import panelHtml from "./panel.html";
 import fabLogoUrl from "./fab-logo.jpg";
 import {K} from "../core/constants.js";
-import {clamp, esc, uid} from "../core/utils.js";
+import {clamp, esc, uid, normalizeSearchTerm, enrichSearchTerm} from "../core/utils.js";
 import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
 import { PRESET_ANALYSIS_PROMPT } from "../core/prompt.js";
-import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, Subtask, Task, Todo} from "../types.js";
+import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, SearchTerm, Subtask, Task, Todo} from "../types.js";
 
 // 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
 const PRESET_PROMPT = PRESET_ANALYSIS_PROMPT;
@@ -469,27 +469,38 @@ export const Panel = {
         '下面这些不要当成任务：元任务或待确认项（如"确定收集方向""梳理思路""补充信息"），这些属于需要向用户追问澄清的问题，应写进 questions；与信息收集无关的行政动作。\n\n' +
         '[定义提示词（prompt）的写法]\n' +
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
-        '[输出格式]\n' +
-        '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
-        '[规则]\n' +
-        '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
-        '2. 需求足够明确时 questions 返回空数组 []。\n' +
-        '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
-        '4. 名称简洁，prompt 具体，不写空话。\n' +
-        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。\n\n' +
-        '需求：' + text,
-        "json"
-      );
-      const obj = JSON.parse(raw);
-      const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40);
+'[输出格式]\n' +
+'只输出 JSON（不要其他内容）：\n' +
+'{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":[{"display":"显示标签","query":"完整搜索表达式"}],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+'[规则]\n' +
+'1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
+'2. 需求足够明确时 questions 返回空数组 []。\n' +
+'3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
+'4. 名称简洁，prompt 具体，不写空话。\n' +
+'5. 每个任务生成 1-3 个搜索词（searchTerms），每个搜索词包含两层：\n' +
+'   - display：UI 显示标签，8 字以内，简洁明了（如"AI应用案例"）。\n' +
+'   - query：实际复制/搜索时使用的完整表达式。学术场景用布尔运算符（引号精确匹配、AND/OR 组合、减号排除）；通用搜索用自然语言完整问句。\n' +
+'   搜索词要贴合任务内容，不同任务应有差异。\n\n' +
+'需求：' + text,
+"json"
+);
+const obj = JSON.parse(raw);
+const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40);
       const questions: string[] = (Array.isArray(obj.questions) ? obj.questions : [])
         .map((q: unknown) => String(q).trim()).filter(Boolean).slice(0, 5);
       const tasks: Task[] = (Array.isArray(obj.tasks) ? obj.tasks : []).slice(0, 4).map((t: Record<string, unknown>) => ({
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => {
+          if (s && typeof s === "object" && !Array.isArray(s)) {
+            const so = s as Record<string, unknown>;
+            return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
+          }
+          return String(s).trim();
+        }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .slice(0, 3)
+          .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
           title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
@@ -538,13 +549,16 @@ export const Panel = {
         '每一层 prompt 都要具体到能让分类 AI 一眼判断"某条网页记录是否属于它"：写清楚关注什么主题、含哪些关键词、什么算相关、什么不算（边界）、典型来源。目标级写整体范围，任务级写该方向的细分范围，子任务级写最细边界和关键词。禁止空话（如"收集相关信息"）。\n\n' +
         '[输出格式]\n' +
         '只输出 JSON（不要其他内容）：\n' +
-        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":["搜索词1","搜索词2"],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
+        '{"title":"目标名称(<=20字)","prompt":"目标级定义提示词","questions":["需要向用户澄清的问题"],"tasks":[{"title":"任务名","prompt":"任务级定义提示词","searchTerms":[{"display":"显示标签","query":"完整搜索表达式"}],"subtasks":[{"title":"子任务名","prompt":"子任务级定义提示词"}]}]}\n\n' +
         '[规则]\n' +
         '1. 任务最多 4 个，每个任务子任务最多 3 个。\n' +
         '2. 需求足够明确时 questions 返回空数组 []。\n' +
         '3. 需求模糊时把"该问用户什么"写进 questions，不要硬拆成任务。\n' +
         '4. 名称简洁，prompt 具体，不写空话。\n' +
-        '5. 每个任务生成 1-3 个搜索词（searchTerms），用于后续在该任务下搜索相关资料。搜索词要贴合任务内容，不同任务应有差异。',
+        '5. 每个任务生成 1-3 个搜索词（searchTerms），每个搜索词包含两层：\n' +
+        '   - display：UI 显示标签，8 字以内，简洁明了。\n' +
+        '   - query：实际复制/搜索时使用的完整表达式。学术场景用布尔运算符（引号精确匹配、AND/OR 组合、减号排除）；通用搜索用自然语言完整问句。\n' +
+        '   搜索词要贴合任务内容，不同任务应有差异。',
         "json"
       );
       const obj = JSON.parse(raw);
@@ -555,7 +569,15 @@ export const Panel = {
         id: uid("t"),
         title: String(t.title || "").trim().slice(0, 40) || "未命名任务",
         prompt: typeof t.prompt === "string" ? t.prompt : "",
-        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 3),
+        searchTerms: (Array.isArray(t.searchTerms) ? t.searchTerms : []).map((s: unknown) => {
+          if (s && typeof s === "object" && !Array.isArray(s)) {
+            const so = s as Record<string, unknown>;
+            return { display: String(so.display || "").trim(), query: String(so.query || "").trim() };
+          }
+          return String(s).trim();
+        }).filter((s) => (typeof s === "string" ? s : s.display || s.query))
+          .slice(0, 3)
+          .map((s) => enrichSearchTerm(normalizeSearchTerm(s as string | SearchTerm))),
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).slice(0, 3).map((s: Record<string, unknown>) => ({
           id: uid("s"),
           title: String(s.title || "").trim().slice(0, 40) || "未命名子任务",
@@ -672,6 +694,7 @@ export const Panel = {
         id: t.id,
         title: (tEl?.value || "").trim() || "未命名任务",
         prompt: pEl?.value?.trim() || "",
+        searchTerms: (t.searchTerms || []).slice(0, 3),
         subtasks,
       };
     });
@@ -1225,7 +1248,7 @@ export const Panel = {
     this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup); // 搜索框只在组内视图出现
     // 排序 tab 激活态
     this.root.querySelectorAll('[data-act="rec-sort"]').forEach((btn) => {
-      btn.classList.toggle("act", btn.dataset.sort === this.recSort);
+      btn.classList.toggle("act", (btn as HTMLElement).dataset.sort === this.recSort);
     });
     const delBtn = this.root.querySelector('[data-role="del-btn"]') as HTMLButtonElement | null;
     if (delBtn) {
@@ -1656,6 +1679,49 @@ this.els.body.innerHTML = `
     pop.classList.toggle("open", this.todoOpen);
     if (!this.todoOpen) return;
 
+    // 自动修复：给所有 active goal 中缺少 searchTerms 的 open todo 保底并保存
+    let dataModified = false;
+    for (const g of goals) {
+      if (g.status !== "active") continue;
+      // 补齐缺失的 todos
+      if (g.tasks?.length) {
+        const existing = new Set((g.todos || []).map((t) => t.taskId).filter(Boolean));
+        for (const task of g.tasks) {
+          if (existing.has(task.id)) continue;
+          g.todos = g.todos || [];
+          g.todos.push({
+            id: uid("todo"),
+            text: task.title,
+            taskId: task.id,
+            contrib: {},
+            coverage: 0,
+            status: "open",
+            manual: false,
+            searchTerms: (task.searchTerms || []).slice(0, 3),
+          });
+          dataModified = true;
+        }
+      }
+      // 给缺少（或全为无效）searchTerms 的 open todo 保底（即使 Store 中为空也强制生成）
+      for (const todo of g.todos || []) {
+        const todoTerms = (todo.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+        if (todo.status === "open" && !todoTerms.length) {
+          const task = g.tasks?.find((t) => t.id === todo.taskId);
+          const taskTerms = (task?.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+          if (taskTerms.length) {
+            todo.searchTerms = taskTerms.slice(0, 3);
+          } else {
+            const base = todo.text || g.title || "搜索";
+            todo.searchTerms = [{ display: base, query: base }];
+          }
+          dataModified = true;
+        }
+      }
+    }
+    if (dataModified) {
+      Store.write(K.goals, goals);
+    }
+
     const list = this.root!.querySelector('[data-role="todo-list"]') as HTMLElement;
     const activeGoals = goals.filter((g) => g.status === "active");
     if (!activeGoals.length) {
@@ -1680,10 +1746,15 @@ this.els.body.innerHTML = `
       }
       html += items.map((t) => {
         const pct = Math.round(Math.min(1, t.coverage || 0) * 100);
-        const rawTerms = t.searchTerms || [];
-        const terms = rawTerms.filter(Boolean).slice(0, 3);
+        let rawTerms = (t.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+        // 渲染级最终保底：绝不允许 open todo 在 UI 上缺失搜索词
+        if (t.status === "open" && !rawTerms.length) {
+          const base = t.text || g.title || "搜索";
+          rawTerms = [{ display: base, query: base }];
+        }
+        const terms = rawTerms.slice(0, 3).map((s) => enrichSearchTerm(normalizeSearchTerm(s)));
         const termRows = terms.length
-          ? terms.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;justify-content:space-between"><button class="sz-copy" data-act="copy-term" data-term="${esc(s)}" title="复制" style="flex:1;justify-content:flex-start">${ICONS.copy} <span style="margin-left:3px">${esc(s)}</span></button><button class="sz-copy" data-act="search-term" data-term="${esc(s)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
+          ? terms.map((st) => `<div class="sz-term-row"><button class="sz-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制">${ICONS.copy} <span>${esc(st.display)}</span></button><button class="sz-search-btn" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
           : `<div style="color:var(--tx-muted);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
