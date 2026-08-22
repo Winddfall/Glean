@@ -1702,12 +1702,14 @@ this.els.body.innerHTML = `
           dataModified = true;
         }
       }
-      // 给缺少 searchTerms 的 open todo 保底（即使 Store 中为空也强制生成）
+      // 给缺少（或全为无效）searchTerms 的 open todo 保底（即使 Store 中为空也强制生成）
       for (const todo of g.todos || []) {
-        if (todo.status === "open" && (!todo.searchTerms || !todo.searchTerms.length)) {
+        const todoTerms = (todo.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+        if (todo.status === "open" && !todoTerms.length) {
           const task = g.tasks?.find((t) => t.id === todo.taskId);
-          if (task && task.searchTerms?.length) {
-            todo.searchTerms = task.searchTerms.slice(0, 3);
+          const taskTerms = (task?.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+          if (taskTerms.length) {
+            todo.searchTerms = taskTerms.slice(0, 3);
           } else {
             const base = todo.text || g.title || "搜索";
             todo.searchTerms = [{ display: base, query: base }];
