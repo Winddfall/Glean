@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { JSDOM } = require("/Users/windfall/Developer/gemini-voyager/node_modules/jsdom");
+const { JSDOM } = require("jsdom");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HTML = fs.readFileSync(path.join(__dirname, "fixtures", "lxf-python-intro.html"), "utf8");
 const SRC = fs.readFileSync(path.join(__dirname, "..", "glean.js"), "utf8");
@@ -50,7 +50,13 @@ async function bootScenario({ goalTitle, llmResult }) {
 test("F1 归档路径：相关网页自动记录并归档至目标", async () => {
   const s = await bootScenario({
     goalTitle: "学习 Python 编程",
-    llmResult: { relevant: true, goalId: "g_py", summary: "Python 教程导言，介绍语言定位与特点", keywords: ["Python", "编程"] },
+    llmResult: {
+      relevant: true,
+      goalId: "g_py",
+      summary: "Python 教程导言，介绍语言定位与特点",
+      keywords: ["Python", "编程"],
+      matches: [{ goalId: "g_py", relevance: 95, reasoning: "页面内容与 Python 学习目标高度相关" }],
+    },
   });
   try {
     // 抓取：恰好一条记录，标题/URL 正确
@@ -85,7 +91,7 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
 test("F1 摸鱼路径：无关网页归入摸鱼分类", async () => {
   const s = await bootScenario({
     goalTitle: "调研竞品定价策略",
-    llmResult: { relevant: false, goalId: null, summary: "Python 教程导言", keywords: [] },
+    llmResult: { relevant: false, goalId: null, summary: "Python 教程导言", keywords: [], matches: [] },
   });
   try {
     assert.strictEqual(s.records.length, 1);
