@@ -174,9 +174,9 @@
 .sz-todo-meta { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: var(--tx-muted); flex-wrap: wrap; }
 .sz-copy { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 0; }
 .sz-copy:hover { text-decoration: underline; }
-.sz-term-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; justify-content: space-between; }
-.sz-term-row .sz-copy { flex: 1 1 auto; min-width: 0; }
-.sz-term-row .sz-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sz-term-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; justify-content: space-between; width: 100%; }
+.sz-term-row .sz-copy { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sz-term-row .sz-copy span { margin-left: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sz-search-btn { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; color: var(--tx-link); font-size: 11px; cursor: pointer; padding: 0; flex-shrink: 0; }
 .sz-search-btn:hover { text-decoration: underline; }
 

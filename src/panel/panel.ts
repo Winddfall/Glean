@@ -1750,7 +1750,7 @@ this.els.body.innerHTML = `
         }
         const terms = rawTerms.slice(0, 3).map((s) => enrichSearchTerm(normalizeSearchTerm(s)));
         const termRows = terms.length
-          ? terms.map((st) => `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;justify-content:space-between;width:100%"><button class="sz-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;background:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:3px">${ICONS.copy} <span style="margin-left:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(st.display)}</span></button><button class="sz-search-btn" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索" style="flex-shrink:0;border:none;background:none;color:var(--tx-link);font-size:11px;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:3px">${ICONS.ext} 搜索</button></div>`).join("")
+          ? terms.map((st) => `<div class="sz-term-row"><button class="sz-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制">${ICONS.copy} <span>${esc(st.display)}</span></button><button class="sz-search-btn" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
           : `<div style="color:var(--tx-muted);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
