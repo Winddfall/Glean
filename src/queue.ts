@@ -104,7 +104,7 @@ function updateSearchTerms(goal: Goal, rec: BrowseRecord): void {
 
   // 先确保每个 open todo 至少有基础搜索词（即使 newTerms 为空也保底）
   for (const todo of openTodos) {
-    const arr = todo.searchTerms || [];
+    const arr = (todo.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
     if (!arr.length) {
       const base = (newTerms[0] && newTerms[0].query) || todo.text || goal.title || "搜索";
       arr.push({ display: base, query: base });
@@ -150,10 +150,12 @@ function syncTodos(goal: Goal): void {
   }
   // 给已有但缺少 searchTerms 的 open todo 补充保底词（兼容旧数据）
   for (const todo of goal.todos || []) {
-    if (todo.status === "open" && (!todo.searchTerms || !todo.searchTerms.length)) {
+    const validTerms = (todo.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+    if (todo.status === "open" && !validTerms.length) {
       const task = goal.tasks.find((t) => t.id === todo.taskId);
-      if (task && task.searchTerms && task.searchTerms.length) {
-        todo.searchTerms = task.searchTerms.slice(0, 3);
+      const taskTerms = (task?.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+      if (taskTerms.length) {
+        todo.searchTerms = taskTerms.slice(0, 3);
       } else {
         const base = todo.text || goal.title || "搜索";
         todo.searchTerms = [{ display: base, query: base }];

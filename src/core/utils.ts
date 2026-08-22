@@ -55,8 +55,13 @@ export function parseJsonLoose(raw: unknown): unknown {
 
 /** 把 string 或 SearchTerm 统一归一化为 SearchTerm 对象 */
 export function normalizeSearchTerm(term: string | SearchTerm): SearchTerm {
-  if (typeof term === "string") return { display: term, query: term };
-  return { display: String(term.display || "").trim() || term.query, query: String(term.query || "").trim() || term.display };
+  if (typeof term === "string") {
+    const s = term.trim();
+    return { display: s, query: s };
+  }
+  const display = String(term.display || "").trim();
+  const query = String(term.query || "").trim();
+  return { display: display || query, query: query || display };
 }
 
 /** 从混合数组中提取所有 query（实际搜索用） */
