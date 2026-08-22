@@ -1,0 +1,4 @@
+interface:
+  display_name: "贡献拾知"
+  short_description: "全流程陪同拾知贡献：同步、分支、开发、验证、提交、推送、rebase 与 PR"
+  default_prompt: "使用 $shizhi-contribute 全程陪同并安全完成这次拾知贡献。"

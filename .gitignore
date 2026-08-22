@@ -6,3 +6,5 @@ node_modules
 
 # 说明文档
 脚本妙招是什么.md
+# macOS Finder 元数据
+.DS_Store
