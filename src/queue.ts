@@ -151,6 +151,8 @@ function syncTodos(goal: Goal): void {
   // 给已有但缺少 searchTerms 的 open todo 补充保底词（兼容旧数据）
   for (const todo of goal.todos || []) {
     const validTerms = (todo.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
+    // 持久化过滤结果，清除空 term 对象，避免脏数据残留
+    todo.searchTerms = validTerms;
     if (todo.status === "open" && !validTerms.length) {
       const task = goal.tasks.find((t) => t.id === todo.taskId);
       const taskTerms = (task?.searchTerms || []).filter((s) => normalizeSearchTerm(s).query);
