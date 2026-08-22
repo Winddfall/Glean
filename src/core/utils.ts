@@ -86,8 +86,8 @@ export function enrichSearchTerm(term: SearchTerm): SearchTerm {
   const query = (term.query || "").trim();
   const fallback = display || query;
 
-  // 已经是复杂布尔表达式，保留
-  if (query && (/[\"']/.test(query) || /\b(AND|OR|NOT)\b/i.test(query) || /[()]/.test(query) || /site:/i.test(query))) {
+  // 已经是复杂布尔表达式，或含独立排除词（如 "-tutorial"），保留以免丢失排除语义
+  if (query && (/[\"']/.test(query) || /\b(AND|OR|NOT)\b/i.test(query) || /[()]/.test(query) || /site:/i.test(query) || /(?:^|\s)-\S+/.test(query))) {
     return { display: display || query, query };
   }
   // LLM 已生成明显更长的扩展 query，保留
