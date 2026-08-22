@@ -200,8 +200,7 @@ export const Panel = {
   recQuery: "",
   recSort: "time" as "time" | "rel",
   recGroup: null as string | null, // 组内视图：当前选中分组的 key，null 为总览
-  recDeleteMode: false, // 记录多选删除模式
-  recSelected: new Set<string>(), // 多选删除中选中的记录项 key
+  recCollapsed: new Set<string>(), // 记录标签页折叠的分组 key
   collapsed: new Set<string>(), // 折叠的分类节点（"g:{id}" | "t:{id}"）
   editingPrompt: null as null | string, // 正在编辑分类提示词的节点 id
   aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
@@ -360,10 +359,8 @@ export const Panel = {
     else if (act === "enter-group") this.enterGroup(btn.dataset.key!);
     else if (act === "leave-group") this.leaveGroup();
     else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
-    else if (act === "del-mode") this.toggleDeleteMode();
-    else if (act === "del-cancel") { this.recDeleteMode = false; this.recSelected.clear(); this.render(); }
-    else if (act === "del-confirm") this.confirmDeleteSelected();
-    else if (act === "rec-check") { const k = btn.dataset.key!; if ((btn as HTMLInputElement).checked) this.recSelected.add(k); else this.recSelected.delete(k); this.render(); }
+    else if (act === "toggle-rec-group") this.toggleRecGroup(btn.dataset.key!);
+    else if (act === "del-record") this.delRecord(btn.dataset.key || "");
     else if (act === "theme") this.toggleTheme();
     else if (act === "reset-prompt") this.resetPrompt();
     else if (act === "clear-selected") this.clearSelected();
@@ -743,45 +740,33 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   },
 
   // ---- 记录操作 ----
-  toggleDeleteMode(): void {
-    this.recDeleteMode = !this.recDeleteMode;
-    if (!this.recDeleteMode) this.recSelected.clear();
+  toggleRecGroup(key: string): void {
+    if (this.recCollapsed.has(key)) this.recCollapsed.delete(key);
+    else this.recCollapsed.add(key);
     this.render();
   },
-  confirmDeleteSelected(): void {
-    if (!this.recSelected.size) { this.toast("请先选择要删除的记录", "err"); return; }
-    if (!confirm(`确定删除选中的 ${this.recSelected.size} 条记录？此操作不可恢复。`)) return;
+  delRecord(key: string): void {
+    if (!confirm("确定删除这条记录？此操作不可恢复。")) return;
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const queue = Store.read<QueueItem[]>(K.queue, []);
-    const toDeleteWhole = new Set<string>();
-    const toRemoveMatch = new Map<string, string[]>(); // recordId -> [matchKeys]
-    for (const key of this.recSelected) {
-      if (key.includes(":")) {
-        const [rid] = key.split(":");
-        const arr = toRemoveMatch.get(rid) || [];
-        arr.push(key);
-        toRemoveMatch.set(rid, arr);
-      } else {
-        toDeleteWhole.add(key);
-      }
-    }
-    // 移除 match
-    for (const [rid, keys] of toRemoveMatch) {
-      const rec = recs.find((r) => r.id === rid);
-      if (!rec || !rec.matches) continue;
-      for (const key of keys) {
-        const [, gid, tid, sid] = key.split(":");
-        rec.matches = rec.matches.filter((m) => !(m.goalId === gid && (m.taskId || "") === tid && (m.subtaskId || "") === sid));
-      }
-      if (rec.matches.length === 0) {
-        toDeleteWhole.add(rid);
-      } else {
+    const isMatch = key.includes(":");
+    const [rid, gid, tid, sid] = isMatch ? key.split(":") : [key, "", "", ""];
+    const rec = recs.find((r) => r.id === rid);
+    if (!rec) return;
+    let deletedWhole = false;
+    if (isMatch) {
+      if (!rec.matches) return;
+      rec.matches = rec.matches.filter((m) => !(m.goalId === gid && (m.taskId || "") === tid && (m.subtaskId || "") === sid));
+      if (rec.matches.length) {
         const top = rec.matches.sort((a, b) => b.relevance - a.relevance)[0];
         rec.category = "goal:" + top.goalId;
+      } else {
+        deletedWhole = true;
       }
+    } else {
+      deletedWhole = true;
     }
-    // 删除整记录
-    for (const rid of toDeleteWhole) {
+    if (deletedWhole) {
       const idx = recs.findIndex((r) => r.id === rid);
       if (idx >= 0) recs.splice(idx, 1);
       const qi = queue.findIndex((q) => q.recordId === rid);
@@ -789,11 +774,8 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     }
     Store.write(K.records, recs);
     Store.write(K.queue, queue);
-    const deletedCount = this.recSelected.size;
-    this.recSelected.clear();
-    this.recDeleteMode = false;
     this.render();
-    this.toast("已删除 " + deletedCount + " 条记录", "ok");
+    this.toast(isMatch && !deletedWhole ? "已从该分类移除记录" : "已删除记录", "ok");
   },
   retryRecord(rid: string): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
@@ -962,7 +944,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   // ---- 用户画像 ----
   addProfile(): void {
     const input = this.root!.querySelector('[data-role="profile-input"]') as HTMLInputElement;
-    const kind = (this.root!.querySelector('[data-role="profile-kind"]') as HTMLSelectElement).value as "facts" | "preferences";
+    const kind = "preferences" as "facts" | "preferences";
     const text = (input?.value || "").trim();
     if (!text) return;
     const profile = Store.read<Profile>(K.profile, { updatedAt: 0, facts: [], preferences: [] });
@@ -1175,16 +1157,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   enterGroup(key: string): void {
     this.recGroup = key;
     this.recQuery = "";
-    this.recDeleteMode = false;
-    this.recSelected.clear();
     this.els.searchInput.value = "";
     this.render();
   },
   leaveGroup(): void {
     this.recGroup = null;
     this.recQuery = "";
-    this.recDeleteMode = false;
-    this.recSelected.clear();
     this.els.searchInput.value = "";
     this.render();
   },
@@ -1202,8 +1180,6 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   switchTab(tab: string): void {
     if (tab === this.tab) return;
     this.tab = tab;
-    this.recDeleteMode = false;
-    this.recSelected.clear();
     // 清理可能残留的高度动画状态
     clearTimeout(this.animTimer);
     this.els.body.classList.remove("sz-animH");
@@ -1250,20 +1226,6 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.root.querySelectorAll('[data-act="rec-sort"]').forEach((btn) => {
       btn.classList.toggle("act", (btn as HTMLElement).dataset.sort === this.recSort);
     });
-    const delBtn = this.root.querySelector('[data-role="del-btn"]') as HTMLButtonElement | null;
-    if (delBtn) {
-      if (this.recDeleteMode) {
-        delBtn.textContent = "确认删除(" + this.recSelected.size + ")";
-        delBtn.dataset.act = "del-confirm";
-        delBtn.classList.add("sz-del-confirm");
-      } else {
-        delBtn.textContent = "删除";
-        delBtn.dataset.act = "del-mode";
-        delBtn.classList.remove("sz-del-confirm");
-      }
-    }
-    const cancelBtn = this.root.querySelector('[data-role="del-cancel"]') as HTMLButtonElement | null;
-    if (cancelBtn) cancelBtn.style.display = this.recDeleteMode ? "" : "none";
     // 关联网址输入框同步（聚焦编辑时不打扰）
     const linked = this.root.querySelector('[data-role="linked-url"]') as HTMLInputElement | null;
     if (linked && linked !== this.root.activeElement) linked.value = settings().linkedUrl || "";
@@ -1271,20 +1233,22 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   renderGoals(): void {
     const goals = Store.read<Goal[]>(K.goals, []);
 
-    // 分类提示词（分类定义）行：展示或内联编辑
+    // 分类提示词（分类定义）：内联编辑面板
+    const promptEditor = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string =>
+      `<div class="sz-prompt-edit sz-prompt-edit-${kind}">
+        <textarea class="sz-textarea" data-role="prompt-input" data-id="${esc(id)}" rows="2" placeholder="分类定义：告诉 AI 这个分类涵盖哪些内容，用于自动归档判断">${esc(prompt)}</textarea>
+        <div class="sz-prompt-actions">
+          <button class="sz-btn primary" data-act="prompt-save" data-id="${esc(id)}" data-pkind="${kind}">${ICONS.check} 保存</button>
+          <button class="sz-btn" data-act="prompt-cancel">取消</button>
+        </div>
+      </div>`;
+    // 分类定义按钮：放在标题同行，点击后进入内联编辑
+    const promptChip = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string =>
+      `<button class="sz-cat-btn ${prompt ? "" : "empty"}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="${prompt ? "点击编辑分类定义" : "点击添加分类定义"}">${prompt ? "分类定义" : "＋ 分类定义"}</button>`;
+    // 任务/子任务仍沿用标题下方一行的展示方式
     const promptRow = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string => {
-      if (this.editingPrompt === id) {
-        return `<div class="sz-prompt-edit sz-prompt-edit-${kind}">
-          <textarea class="sz-textarea" data-role="prompt-input" data-id="${esc(id)}" rows="2" placeholder="分类定义：告诉 AI 这个分类涵盖哪些内容，用于自动归档判断">${esc(prompt)}</textarea>
-          <div class="sz-prompt-actions">
-            <button class="sz-btn primary" data-act="prompt-save" data-id="${esc(id)}" data-pkind="${kind}">${ICONS.check} 保存</button>
-            <button class="sz-btn" data-act="prompt-cancel">取消</button>
-          </div>
-        </div>`;
-      }
-      if (!prompt) {
-        return `<div class="sz-prompt sz-prompt-${kind} empty" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击添加分类定义">＋ 分类定义</div>`;
-      }
+      if (this.editingPrompt === id) return promptEditor(kind, id, prompt);
+      if (!prompt) return `<div class="sz-prompt sz-prompt-${kind} empty" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击添加分类定义">＋ 分类定义</div>`;
       return `<div class="sz-prompt sz-prompt-${kind}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击编辑分类定义"><span class="sz-prompt-text">${esc(prompt)}</span></div>`;
     };
 
@@ -1339,11 +1303,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         ${caret("g:" + g.id, hasTasks)}
         <span class="sz-level sz-level-goal" aria-hidden="true"></span>
         <span class="sz-ntitle sz-ntitle-goal clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
-        <button class="sz-ibtn sz-goal-status" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}" style="color:${g.status === "active" ? "var(--accent)" : "var(--tx-muted)"}">${ICONS.check}</button>
+        ${promptChip("goal", g.id, g.prompt || "")}
+        <button class="sz-ibtn sz-goal-status" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}">${ICONS.check}</button>
         <button class="sz-ibtn" data-act="edit-goal" data-id="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
-      ${promptRow("goal", g.id, g.prompt || "")}
+      ${this.editingPrompt === g.id ? promptEditor("goal", g.id, g.prompt || "") : ""}
       ${collapsed ? "" : `
       <div class="sz-children">
         ${(g.tasks || []).map((t) => taskRow(g, t)).join("")}
@@ -1450,8 +1415,6 @@ this.els.body.innerHTML = `
       const relTitle = m ? `相关度 ${relevance}/100（${m.reasoning ? m.reasoning.slice(0, 60) : ""}）` : (relevance == null ? "未分析" : `相关度 ${relevance}/100`);
       const displayTitle = (m?.title || r.title || r.url);
       const truncatedTitle = displayTitle.length > 28 ? displayTitle.slice(0, 28) + "…" : displayTitle;
-      const itemKey = m ? `${r.id}:${m.goalId}:${m.taskId || ""}:${m.subtaskId || ""}` : r.id;
-      const checked = this.recSelected.has(itemKey) ? "checked" : "";
       const kwHtml = keywords.length
         ? `<div class="sz-detail-sec">${keywords.slice(0, 8).map((k) => `<span class="sz-kw">${highlightText(k, q)}</span>`).join("")}</div>`
         : "";
@@ -1464,20 +1427,23 @@ this.els.body.innerHTML = `
       const keyQuotesHtml = m && m.keyQuotes?.length
         ? `<div class="sz-detail-sec"><div class="sz-detail-sec-title">📌 原文引用</div>${m.keyQuotes.map((kq) => `<blockquote class="sz-detail-quote">${esc(kq.quote)}<cite>${esc(kq.context)}</cite></blockquote>`).join("")}</div>`
         : "";
+      const hasDetail = keywords.length > 0 || findings.length > 0 || notes.length > 0 || (m && (m.keyQuotes || []).length > 0) || r.category === "pending";
       const relCls = relevance == null ? "sz-rel-none" : relevance >= 60 ? "sz-rel-high" : relevance >= 30 ? "sz-rel-mid" : "sz-rel-low";
       const relBadge = relevance != null ? `<span class="sz-rel-badge">${relevance}%</span>` : "";
+      const itemKey = m ? `${r.id}:${m.goalId}:${m.taskId || ""}:${m.subtaskId || ""}` : r.id;
       return `
-      <div class="sz-rec" data-id="${esc(r.id)}" data-item-key="${esc(itemKey)}" ${m ? `data-match-goal="${esc(m.goalId)}"` : ""}>
+      <div class="sz-rec" data-id="${esc(r.id)}" ${m ? `data-match-goal="${esc(m.goalId)}"` : ""}>
         <div class="sz-rec-head">
-          ${this.recDeleteMode ? `<input type="checkbox" class="sz-rec-check" data-act="rec-check" data-key="${esc(itemKey)}" ${checked}>` : ""}
           <span class="sz-rel ${relCls}" title="${esc(relTitle)}"></span>
-          <div class="sz-rec-main" data-act="expand">
+          <div class="sz-rec-main">
             <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(displayTitle)}">${highlightText(truncatedTitle, q)}</a>
-            <div class="sz-rmeta">${fmtDate(r.capturedAt)} · ${highlightText(r.summary || r.preview || "", q)}${m ? ` · 命中分类` : ""}</div>
+            <div class="sz-rmeta">${fmtDate(r.capturedAt)}${m ? ` · 命中分类` : ""}</div>
           </div>
           <div class="sz-rec-actions">
             ${relBadge}
             ${r.category === "pending" ? '<span class="sz-badge">分析中</span>' : ""}
+            ${hasDetail ? `<button class="sz-ibtn sz-expand" data-act="expand" title="展开关键发现">${ICONS.chevron}</button>` : ""}
+            <button class="sz-ibtn" data-act="del-record" data-key="${esc(itemKey)}" title="删除记录">${ICONS.trash}</button>
           </div>
         </div>
         <div class="sz-rec-detail">${kwHtml}${findingsHtml}${notesHtml}${keyQuotesHtml}${r.category === "pending" ? "正在分析中，请稍等片刻~" : ""}</div>
@@ -1563,12 +1529,18 @@ this.els.body.innerHTML = `
       return;
     }
 
-    // 总览：按时间倒序，点击组标题进入组内视图
+    // 总览：按时间倒序，分组可折叠，点击组标题进入组内视图
     let html = "";
     for (const g of groups) {
       if (!g.items.length) continue;
-      html += `<div class="sz-sec sz-sec-link" data-act="enter-group" data-key="${esc(g.key)}" title="进入该分组"><span class="sz-dot" style="background:${g.color}"></span>${esc(g.name)}<span class="sz-count">${g.items.length}</span><span class="sz-chev">›</span></div>`;
-      html += g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("");
+      const collapsed = this.recCollapsed.has(g.key);
+      html += `<div class="sz-sec sz-sec-link">
+        <button class="sz-ibtn sz-rec-caret ${collapsed ? "" : "open"}" data-act="toggle-rec-group" data-key="${esc(g.key)}" title="${collapsed ? "展开记录" : "收起记录"}">${ICONS.chevron}</button>
+        <span class="sz-dot" style="background:${g.color}"></span>
+        <span class="sz-gtitle sz-group-title" data-act="enter-group" data-key="${esc(g.key)}" title="进入该分组">${esc(g.name)}</span>
+        <span class="sz-count">${g.items.length}</span>
+      </div>`;
+      if (!collapsed) html += g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("");
     }
     this.els.body.innerHTML = html || '<div class="sz-empty">暂无记录</div>';
   },
@@ -1586,11 +1558,7 @@ this.els.body.innerHTML = `
     <div class="sz-field">
       <span class="sz-label">添加画像条目</span>
       <div style="display:flex;gap:6px">
-        <input class="sz-input" data-role="profile-input" placeholder="例如：偏好用 Python 写脚本">
-        <select class="sz-input" data-role="profile-kind" style="max-width:96px;flex:none">
-          <option value="facts">关于你</option>
-          <option value="preferences">偏好</option>
-        </select>
+        <input class="sz-input" data-role="profile-input" placeholder="例如：偏好用 Python 写脚本" style="flex:1">
         <button class="sz-btn primary" data-act="add-profile">添加</button>
       </div>
       <div style="display:flex;gap:6px;margin-top:6px">
@@ -1599,7 +1567,7 @@ this.els.body.innerHTML = `
     </div>
     ${has
       ? `${profile.facts.length ? `<div class="sz-sec">关于你</div>${list(profile.facts, "facts")}` : ""}${profile.preferences.length ? `<div class="sz-sec">偏好</div>${list(profile.preferences, "preferences")}` : ""}`
-      : '<div class="sz-empty">暂无画像数据。可手动添加，或点击上方按钮让 AI 根据记录生成。</div>'}`;
+      : ""}`;
   },
   renderSettings(): void {
     const s = settings();

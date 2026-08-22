@@ -55,7 +55,7 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
       goalId: "g_py",
       summary: "Python 教程导言，介绍语言定位与特点",
       keywords: ["Python", "编程"],
-      matches: [{ goalId: "g_py", relevance: 95, reasoning: "页面内容与 Python 学习目标高度相关" }],
+      matches: [{ goalId: "g_py", relevance: 95, reasoning: "页面内容与 Python 学习目标高度相关", findings: ["关键发现测试"] }],
     },
   });
   try {
@@ -82,7 +82,11 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
     s.shadow.querySelector('[data-tab="records"]').click();
     const body = s.shadow.querySelector(".sz-body").innerHTML;
     assert.ok(body.includes("学习 Python 编程"), "记录按目标分组");
-    assert.ok(body.includes("Python 教程导言"), "摘要显示在记录里");
+    assert.ok(!body.includes("Python 教程导言"), "摘要不再显示在记录里");
+    assert.ok(s.shadow.querySelector(".sz-rtitle")?.textContent?.includes("Python"), "记录标题仍显示");
+    s.shadow.querySelector(".sz-expand").click();
+    assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("💡 关键发现"), "展开后显示关键发现");
+    assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("关键发现测试"), "展开后显示匹配到该分类的发现");
   } finally {
     s.close();
   }
