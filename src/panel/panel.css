@@ -196,28 +196,49 @@
 
 /* ---- 目标三级树 ---- */
 .sz-goal-toolbar { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.sz-node { border-bottom: 1px dashed var(--bd-dash); }
-.sz-node:last-child { border-bottom: none; }
-.sz-row { display: flex; align-items: center; gap: 4px; padding: 5px 2px; border-radius: 6px; }
+.sz-node { position: relative; margin-bottom: 10px; padding-bottom: 8px; }
+.sz-node::after { content: ""; position: absolute; left: 4px; right: 4px; bottom: 0; height: 1px; background: var(--bd-light); }
+.sz-node:last-child { margin-bottom: 0; }
+.sz-node:last-child::after { display: none; }
+.sz-row { display: flex; align-items: center; gap: 5px; min-height: 28px; padding: 3px 2px; border-radius: 6px; }
 .sz-row:hover { background: var(--bg-hover); }
+.sz-row-goal { margin-top: 1px; padding-top: 5px; padding-bottom: 5px; }
+.sz-row-task { padding-top: 4px; padding-bottom: 3px; }
+.sz-row-subtask { min-height: 25px; padding-top: 2px; padding-bottom: 2px; }
 .sz-row.dragover { outline: 1px dashed var(--accent); outline-offset: -1px; }
-.sz-grip { color: var(--tx-muted); cursor: grab; display: flex; flex: none; opacity: 0; }
-.sz-row:hover .sz-grip { opacity: 1; }
+.sz-grip { color: var(--tx-muted); cursor: grab; display: flex; flex: none; opacity: 0; transition: opacity .15s ease; }
+.sz-row:hover .sz-grip { opacity: .7; }
 .sz-grip:active { cursor: grabbing; }
-.sz-ntitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tx-primary); }
+.sz-level { display: block; flex: none; padding: 0; background: transparent; }
+.sz-level-goal { width: 3px; height: 14px; border-radius: 999px; background: var(--accent); opacity: .8; }
+.sz-level-task { width: 5px; height: 5px; margin: 0 1px; border-radius: 2px; background: var(--tx-secondary); opacity: .65; }
+.sz-level-subtask { width: 4px; height: 4px; margin: 0 2px; border-radius: 50%; background: var(--tx-muted); opacity: .8; }
+.sz-ntitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tx-primary); letter-spacing: .01em; }
+.sz-ntitle-goal { font-size: 14px; font-weight: 650; }
+.sz-ntitle-task { font-size: 12px; font-weight: 600; }
+.sz-ntitle-subtask { font-size: 12px; font-weight: 400; color: var(--tx-primary); }
 .sz-ntitle.done { color: var(--tx-muted); text-decoration: line-through; }
 .sz-ntitle.clickable { cursor: pointer; }
 .sz-ntitle.clickable:hover { color: var(--accent); }
-.sz-children { margin-left: 18px; padding-left: 10px; border-left: 1px solid var(--bd-light); }
-.sz-caret { width: 14px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--tx-muted); cursor: pointer; padding: 0; flex: none; transition: transform .15s; transform: rotate(-90deg); }
+.sz-children { margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--bd-light); }
+.sz-caret { width: 14px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--tx-muted); cursor: pointer; padding: 0; flex: none; transition: transform .15s, color .15s; transform: rotate(-90deg); }
+.sz-caret:hover { color: var(--tx-primary); }
 .sz-caret.open { transform: rotate(0deg); }
 .sz-caret-spacer { width: 14px; flex: none; }
-.sz-prompt { display: flex; align-items: center; gap: 4px; margin: -2px 0 4px 18px; padding: 2px 6px; font-size: 11px; color: var(--tx-secondary); cursor: pointer; border-radius: 4px; }
-.sz-prompt:hover { background: var(--bg-badge-on); color: var(--accent); }
-.sz-prompt.empty { color: var(--tx-muted); font-style: italic; }
-.sz-prompt svg { flex: none; opacity: .7; }
+.sz-prompt { display: flex; align-items: center; gap: 6px; margin: -1px 0 4px 16px; padding: 1px 6px 2px; font-size: 11px; line-height: 1.5; color: var(--tx-secondary); cursor: pointer; border-radius: 4px; }
+.sz-prompt:not(.empty)::before { content: ""; width: 8px; height: 1px; flex: none; background: var(--bd-input); }
+.sz-prompt:hover { background: var(--bg-hover); color: var(--tx-primary); }
+.sz-prompt:hover::before { background: var(--accent); }
+.sz-prompt-goal { color: var(--tx-tertiary); }
+.sz-prompt-subtask { color: var(--tx-muted); }
+.sz-prompt.empty { color: var(--tx-muted); font-style: italic; opacity: .75; }
+.sz-prompt.empty:hover { opacity: 1; color: var(--accent); }
 .sz-prompt-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sz-prompt-edit { margin: 0 0 6px 18px; }
+.sz-prompt-edit { margin: 1px 0 7px 16px; }
+.sz-goal-status { width: 22px; height: 22px; margin-left: 1px; opacity: 0; transition: opacity .15s ease, background-color .15s ease, color .15s ease; }
+.sz-row [data-act^="edit-"], .sz-row [data-act^="del-"] { width: 22px; height: 22px; opacity: 0; transition: opacity .15s ease, background-color .15s ease, color .15s ease; }
+.sz-row:hover .sz-goal-status, .sz-row:hover [data-act^="edit-"], .sz-row:hover [data-act^="del-"], .sz-row:focus-within .sz-goal-status, .sz-row:focus-within [data-act^="edit-"], .sz-row:focus-within [data-act^="del-"] { opacity: .72; }
+.sz-row .sz-goal-status:hover, .sz-row [data-act^="edit-"]:hover, .sz-row [data-act^="del-"]:hover { opacity: 1; }
 .sz-prompt-actions { display: flex; gap: 6px; margin-top: 4px; }
 
 /* ---- AI 拆解确认卡片 ---- */
@@ -251,4 +272,3 @@
 .sz-hl { background: #fde68a; color: #92400e; padding: 0 1px; border-radius: 2px; }
 .sz-rlink { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-size: 12px; text-decoration: none; cursor: pointer; background: none; border: none; padding: 0; }
 .sz-rlink:hover { text-decoration: underline; }
-
