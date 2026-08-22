@@ -1274,7 +1274,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     // 分类提示词（分类定义）行：展示或内联编辑
     const promptRow = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string => {
       if (this.editingPrompt === id) {
-        return `<div class="sz-prompt-edit">
+        return `<div class="sz-prompt-edit sz-prompt-edit-${kind}">
           <textarea class="sz-textarea" data-role="prompt-input" data-id="${esc(id)}" rows="2" placeholder="分类定义：告诉 AI 这个分类涵盖哪些内容，用于自动归档判断">${esc(prompt)}</textarea>
           <div class="sz-prompt-actions">
             <button class="sz-btn primary" data-act="prompt-save" data-id="${esc(id)}" data-pkind="${kind}">${ICONS.check} 保存</button>
@@ -1283,9 +1283,9 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         </div>`;
       }
       if (!prompt) {
-        return `<div class="sz-prompt empty" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击添加分类定义">＋ 分类定义</div>`;
+        return `<div class="sz-prompt sz-prompt-${kind} empty" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击添加分类定义">＋ 分类定义</div>`;
       }
-      return `<div class="sz-prompt" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击编辑分类定义">${ICONS.bulb}<span class="sz-prompt-text">${esc(prompt)}</span></div>`;
+      return `<div class="sz-prompt sz-prompt-${kind}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击编辑分类定义"><span class="sz-prompt-text">${esc(prompt)}</span></div>`;
     };
 
     // 折叠开关：无下级时用占位对齐
@@ -1296,10 +1296,11 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     };
 
     const subtaskRow = (g: Goal, s: Subtask): string => `
-      <div class="sz-row" draggable="true" data-kind="subtask" data-id="${esc(s.id)}" data-parent="${esc(g.id)}">
+      <div class="sz-row sz-row-subtask" draggable="true" data-kind="subtask" data-id="${esc(s.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(s.id)}" data-kind="subtask" title="点击查看该子任务下的记录">${esc(s.title)}</span>
+        <span class="sz-level sz-level-subtask" aria-hidden="true"></span>
+        <span class="sz-ntitle sz-ntitle-subtask clickable" data-act="goto-rec" data-id="${esc(s.id)}" data-kind="subtask" title="点击查看该子任务下的记录">${esc(s.title)}</span>
         <button class="sz-ibtn" data-act="edit-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1309,10 +1310,11 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       const hasSub = (t.subtasks || []).length > 0;
       const collapsed = this.collapsed.has("t:" + t.id);
       return `
-      <div class="sz-row" draggable="true" data-kind="task" data-id="${esc(t.id)}" data-parent="${esc(g.id)}">
+      <div class="sz-row sz-row-task" draggable="true" data-kind="task" data-id="${esc(t.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         ${caret("t:" + t.id, hasSub)}
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="${esc(t.id)}" data-kind="task" title="点击查看该任务下的记录">${esc(t.title)}</span>
+        <span class="sz-level sz-level-task" aria-hidden="true"></span>
+        <span class="sz-ntitle sz-ntitle-task clickable" data-act="goto-rec" data-id="${esc(t.id)}" data-kind="task" title="点击查看该任务下的记录">${esc(t.title)}</span>
         <button class="sz-ibtn" data-act="edit-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
@@ -1332,11 +1334,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       const collapsed = this.collapsed.has("g:" + g.id);
       return `
     <div class="sz-node">
-      <div class="sz-row" draggable="true" data-kind="goal" data-id="${esc(g.id)}">
+      <div class="sz-row sz-row-goal" draggable="true" data-kind="goal" data-id="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
-        <button class="sz-ibtn" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}" style="color:${g.status === "active" ? "var(--accent)" : "var(--tx-muted)"}">${ICONS.check}</button>
         ${caret("g:" + g.id, hasTasks)}
-        <span class="sz-ntitle clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
+        <span class="sz-level sz-level-goal" aria-hidden="true"></span>
+        <span class="sz-ntitle sz-ntitle-goal clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
+        <button class="sz-ibtn sz-goal-status" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}" style="color:${g.status === "active" ? "var(--accent)" : "var(--tx-muted)"}">${ICONS.check}</button>
         <button class="sz-ibtn" data-act="edit-goal" data-id="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
