@@ -128,3 +128,48 @@ test("F1 闸门：工作模式关闭时不产生记录", async () => {
     window.close();
   }
 });
+
+test("存储空间：仅统计拾知同源数据，可设置软上限并查看完整明细", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: { relevant: false, goalId: null, summary: "Python 教程导言", keywords: [], matches: [] },
+  });
+  try {
+    s.window.localStorage.setItem("host-site-token", "x".repeat(2 * 1024 * 1024));
+    s.window.localStorage.setItem("shizhi.futureData", JSON.stringify({ future: true }));
+    s.shadow.querySelector('[data-tab="settings"]').click();
+
+    const card = s.shadow.querySelector(".sz-storage-card");
+    assert.ok(card, "设置页显示存储空间概览卡");
+    assert.strictEqual(s.shadow.querySelectorAll(".sz-setting-card").length, 3, "设置页其余区块全部使用统一卡片容器");
+    assert.ok(card.textContent.includes("当前源数据"));
+    assert.ok(card.textContent.includes("25 MB"), "默认软上限为 25 MB");
+    assert.ok(!card.textContent.includes("2.0 MB"), "宿主网站自己的 localStorage 不计入拾知用量");
+
+    const tabBar = s.shadow.querySelector(".sz-tabs");
+    assert.strictEqual(tabBar.hidden, false, "设置页正常显示顶部标签栏");
+    card.querySelector('[data-act="storage-manage"]').click();
+    const manager = s.shadow.querySelector(".sz-storage-manager");
+    assert.ok(manager, "可进入存储管理视图");
+    assert.strictEqual(tabBar.hidden, true, "进入存储明细后隐藏顶部标签栏");
+    for (const label of ["目标", "记录", "画像"]) {
+      assert.ok(manager.textContent.includes(label), `明细包含${label}`);
+    }
+    for (const label of ["7 个维度", "分析队列", "设置", "界面状态", "其他拾知数据"]) {
+      assert.ok(!manager.textContent.includes(label), `明细不显示${label}`);
+    }
+
+    manager.querySelector('[data-act="storage-limit"][data-value="50"]').click();
+    assert.strictEqual(s.window.localStorage.getItem("shizhi.storageSoftCapMb"), "50");
+    assert.ok(s.shadow.querySelector(".sz-storage-manager").textContent.includes("50 MB"));
+
+    s.shadow.querySelector('[data-act="storage-close"]').click();
+    assert.strictEqual(tabBar.hidden, false, "关闭存储明细后恢复顶部标签栏");
+    s.shadow.querySelector('[data-act="storage-manage"]').click();
+
+    s.shadow.querySelector('[data-act="storage-category"][data-category="records"]').click();
+    assert.ok(s.shadow.querySelector('[data-tab="records"]').classList.contains("act"), "记录明细可跳转到记录管理");
+  } finally {
+    s.close();
+  }
+});

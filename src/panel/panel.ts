@@ -10,6 +10,16 @@ import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
 import { PRESET_ANALYSIS_PROMPT } from "../core/prompt.js";
+import {
+  STORAGE_SOFT_CAP_OPTIONS_MB,
+  formatStorageBytes,
+  getStorageQuotaSnapshot,
+  saveStorageSoftCapMb,
+  storageQuotaStatus,
+  type StorageCategoryId,
+  type StorageQuotaSnapshot,
+  type StorageSoftCapMb,
+} from "../storageQuota.js";
 import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, SearchTerm, Subtask, Task, Todo} from "../types.js";
 
 // 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
@@ -54,6 +64,10 @@ function resolveLinkedUrl(raw: string): { url: string; usedTemplate: boolean } {
 
 const ICONS = {
   bulb: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>',
+  database: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0-14.8-3L3 11"/><path d="M3 4v7h7"/><path d="M4 13a8.1 8.1 0 0 0 14.8 3L21 13"/><path d="M21 20v-7h-7"/></svg>',
+  statusCheck: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>',
+  statusAlert: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.7 2.5 17.2A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.8L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>',
   x: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   plus: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
@@ -132,6 +146,32 @@ function reorder<T extends { id: string }>(arr: T[], fromId: string, toId: strin
 
 function saveSettings(patch: Partial<Settings>): void {
   Store.write(K.settings, Object.assign({}, settings(), patch));
+}
+
+const STORAGE_CATEGORY_LABELS: Record<StorageCategoryId, string> = {
+  goals: "目标",
+  records: "记录",
+  profile: "画像",
+  queue: "分析队列",
+  settings: "设置",
+  ui: "界面状态",
+  other: "其他拾知数据",
+};
+
+function storageCategoryLabel(id: StorageCategoryId): string {
+  return STORAGE_CATEGORY_LABELS[id];
+}
+
+function storageStatusLabel(status: "normal" | "warning" | "critical"): string {
+  return status === "critical" ? "接近上限" : status === "warning" ? "需要注意" : "空间充足";
+}
+
+function storageStatusIcon(status: "normal" | "warning" | "critical"): string {
+  return status === "normal" ? ICONS.statusCheck : ICONS.statusAlert;
+}
+
+function storagePercent(snapshot: StorageQuotaSnapshot): number {
+  return Math.round(Math.min(1, snapshot.usageRatio) * 100);
 }
 
 // 首次使用写入演示数据，便于理解面板结构（已有数据则不覆盖）
@@ -220,6 +260,7 @@ export const Panel = {
   aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
   todoOpen: false,
   exportOpen: false,
+  storageManagerOpen: false,
   drag: null as null | { kind: "goal" | "task" | "subtask"; id: string; parent: string },
   root: null as ShadowRoot | null,
   pos: { x: 0, y: 0 },
@@ -243,6 +284,7 @@ export const Panel = {
     todoPop: HTMLDivElement;
     ctxmenu: HTMLDivElement;
     autocomplete: HTMLDivElement;
+    tabBar: HTMLDivElement;
     tabs: HTMLButtonElement[];
     themeBtn: HTMLButtonElement;
   },
@@ -275,6 +317,7 @@ export const Panel = {
       todoPop: shadow.querySelector('[data-role="todo-pop"]')!,
       ctxmenu: shadow.querySelector('[data-role="ctxmenu"]')!,
       autocomplete: shadow.querySelector('[data-role="autocomplete"]')!,
+      tabBar: shadow.querySelector(".sz-tabs")!,
       tabs: Array.from(shadow.querySelectorAll(".sz-tab")),
       themeBtn: shadow.querySelector('[data-act="theme"]')!,
     };
@@ -399,6 +442,11 @@ export const Panel = {
     else if (act === "toggle-rec-group") this.toggleRecGroup(btn.dataset.key!);
     else if (act === "del-record") this.askDelete("record", btn.dataset.key || "", undefined, "确定删除这条记录？此操作不可恢复。");
     else if (act === "theme") this.toggleTheme();
+    else if (act === "storage-manage") this.openStorageManager();
+    else if (act === "storage-close") this.closeStorageManager();
+    else if (act === "storage-refresh") this.render();
+    else if (act === "storage-limit") this.saveStorageLimit(btn.dataset.value || "");
+    else if (act === "storage-category") this.manageStorageCategory(btn.dataset.category as StorageCategoryId);
     else if (act === "reset-prompt") this.resetPrompt();
     else if (act === "clear-selected") this.clearSelected();
     else if (act === "ai-linked") this.aiFillLinkedUrl();
@@ -1295,6 +1343,119 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.render();
   },
 
+  openStorageManager(): void {
+    this.storageManagerOpen = true;
+    this.render();
+  },
+  closeStorageManager(): void {
+    this.storageManagerOpen = false;
+    this.render();
+  },
+  saveStorageLimit(value: string): void {
+    const parsed = Number(value) as StorageSoftCapMb;
+    if (!STORAGE_SOFT_CAP_OPTIONS_MB.includes(parsed)) return;
+    try {
+      saveStorageSoftCapMb(parsed);
+      this.toast("存储软上限已更新", "ok");
+      this.render();
+    } catch (error) {
+      this.toast(String(error), "err");
+    }
+  },
+  clearStorageQueue(): void {
+    const queue = Store.read<QueueItem[]>(K.queue, []);
+    if (!queue.length) return;
+    if (!confirm("清空分析队列？尚未分析的记录将不会继续处理。")) return;
+    const recs = Store.read<BrowseRecord[]>(K.records, []);
+    for (const item of queue) {
+      const rec = recs.find((candidate) => candidate.id === item.recordId);
+      if (!rec || rec.category !== "pending") continue;
+      rec.category = "error";
+      rec.excerpt = item.excerpt;
+    }
+    Store.write(K.records, recs);
+    Store.del(K.queue);
+    this.toast("分析队列已清空，未完成记录可手动重试", "ok");
+    this.render();
+  },
+  manageStorageCategory(id: StorageCategoryId): void {
+    if (id === "queue") {
+      this.clearStorageQueue();
+      return;
+    }
+    if (id === "goals" || id === "records" || id === "profile") {
+      this.storageManagerOpen = false;
+      this.switchTab(id === "goals" ? "goals" : id === "records" ? "records" : "profile");
+    }
+  },
+
+  renderStorageCard(snapshot: StorageQuotaSnapshot): string {
+    const status = storageQuotaStatus(snapshot.usageRatio);
+    const percent = storagePercent(snapshot);
+    return `
+      <section class="sz-storage-card" aria-label="存储空间">
+        <div class="sz-storage-card-main">
+          <div class="sz-storage-card-head">
+            <div class="sz-storage-heading"><span class="sz-storage-icon">${ICONS.database}</span><strong>存储空间</strong></div>
+            <div class="sz-storage-card-actions">
+              <span class="sz-storage-status ${status}">${storageStatusIcon(status)}<span>${storageStatusLabel(status)}</span></span>
+              <button class="sz-ibtn" data-act="storage-refresh" title="刷新存储用量" aria-label="刷新存储用量">${ICONS.refresh}</button>
+            </div>
+          </div>
+          <div class="sz-storage-row">
+            <span class="sz-storage-row-label">当前源数据</span>
+            <strong>${formatStorageBytes(snapshot.bytesInUse)} / ${formatStorageBytes(snapshot.softCapBytes)}</strong>
+            <span class="sz-storage-percent">${percent}%</span>
+          </div>
+          <div class="sz-storage-progress" role="progressbar" aria-label="当前源数据" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i class="${status}" style="width:${percent}%"></i></div>
+        </div>
+        <div class="sz-storage-card-foot"><button class="sz-btn" data-act="storage-manage">管理存储</button></div>
+      </section>`;
+  },
+
+  renderStorageManager(snapshot: StorageQuotaSnapshot): void {
+    const status = storageQuotaStatus(snapshot.usageRatio);
+    const percent = storagePercent(snapshot);
+    const categoryRows = snapshot.categories
+      .filter((category) => category.id === "goals" || category.id === "records" || category.id === "profile")
+      .map((category) => {
+        return `<div class="sz-storage-detail-row">
+          <span class="sz-storage-detail-name">${storageCategoryLabel(category.id)}</span>
+          <span class="sz-storage-detail-size">${formatStorageBytes(category.bytesInUse)}</span>
+          <button class="sz-storage-link" data-act="storage-category" data-category="${category.id}">管理</button>
+        </div>`;
+      }).join("");
+    this.els.body.innerHTML = `
+      <div class="sz-storage-manager">
+        <div class="sz-storage-manager-head">
+          <div class="sz-storage-heading"><span class="sz-storage-icon">${ICONS.database}</span><strong>存储空间</strong></div>
+          <button class="sz-ibtn" data-act="storage-close" title="关闭存储管理" aria-label="关闭存储管理">${ICONS.x}</button>
+        </div>
+        <div class="sz-storage-manager-content">
+          <section class="sz-storage-overview">
+            <div class="sz-storage-overview-top">
+              <span class="sz-storage-status ${status}">${storageStatusIcon(status)}<span>${storageStatusLabel(status)}</span></span>
+              <button class="sz-ibtn" data-act="storage-refresh" title="刷新存储用量" aria-label="刷新存储用量">${ICONS.refresh}</button>
+            </div>
+            <div class="sz-storage-row"><span class="sz-storage-row-label">当前源数据</span><strong>${formatStorageBytes(snapshot.bytesInUse)} / ${formatStorageBytes(snapshot.softCapBytes)}</strong><span class="sz-storage-percent">${percent}%</span></div>
+            <div class="sz-storage-progress" role="progressbar" aria-label="当前源数据" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i class="${status}" style="width:${percent}%"></i></div>
+            <div class="sz-storage-origin">仅统计当前源，其他网站的 localStorage 不会共享或汇总。</div>
+          </section>
+          <section class="sz-storage-limit">
+            <div class="sz-storage-section-head"><strong>拾知软上限</strong><span>${formatStorageBytes(snapshot.softCapBytes)}</span></div>
+            <div class="sz-storage-segmented" role="group" aria-label="拾知软上限">
+              ${STORAGE_SOFT_CAP_OPTIONS_MB.map((value) => `<button class="${snapshot.softCapMb === value ? "selected" : ""}" data-act="storage-limit" data-value="${value}" aria-pressed="${snapshot.softCapMb === value}">${value} MB</button>`).join("")}
+            </div>
+            <p class="sz-storage-note">软上限用于提醒和进度展示，不会改变浏览器对当前源的硬性 localStorage 限制。</p>
+          </section>
+          <section class="sz-storage-breakdown">
+            <div class="sz-storage-section-head"><strong>存储明细</strong></div>
+            <div class="sz-storage-detail-list">${categoryRows}</div>
+          </section>
+        </div>
+      </div>`;
+  },
+
   // ---- 渲染 ----
   render(): void {
     if (!this.root) return;
@@ -1321,6 +1482,15 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         if (!hasSub) { this.recGroup = null; this.recQuery = ""; this.els.searchInput.value = ""; }
       }
     }
+    this.els.panel.classList.toggle("storage-manager-open", this.storageManagerOpen);
+    this.els.tabBar.hidden = this.storageManagerOpen;
+    this.els.toolbar.classList.toggle("on", this.tab === "records" && !this.storageManagerOpen);
+    this.els.rectools.classList.toggle("on", this.tab === "records" && !!this.recGroup && !this.storageManagerOpen);
+    if (this.storageManagerOpen) {
+      this.renderStorageManager(getStorageQuotaSnapshot());
+      return;
+    }
+
     // 先渲染 body 内容，避免 toolbar 状态变化和 body 替换之间出现布局不一致的中间态
     if (this.tab === "goals") this.renderGoals();
     else if (this.tab === "records") this.renderRecords();
@@ -1700,7 +1870,7 @@ this.els.body.innerHTML = `
   },
   renderSettings(): void {
     const s = settings();
-    const goals = Store.read<Goal[]>(K.goals, []);
+    const storageSnapshot = getStorageQuotaSnapshot();
     const promptVal = s.analysisPrompt || PRESET_PROMPT;
     const cloneTabs: Array<{ key: "https" | "ssh" | "ghcli"; label: string; cmd: string }> = [
       { key: "https", label: "HTTPS", cmd: "https://github.com/SkillRatLab/research-pilot.git" },
@@ -1709,40 +1879,16 @@ this.els.body.innerHTML = `
     ];
     const activeClone = cloneTabs.find((t) => t.key === this.cloneTab) || cloneTabs[0];
     this.els.body.innerHTML = `
-    <div class="sz-field">
+    ${this.renderStorageCard(storageSnapshot)}
+    <section class="sz-field sz-setting-card">
       <span class="sz-label">记录分析提示词（留空则使用预设）</span>
       <textarea class="sz-textarea" data-role="prompt-input" placeholder="${esc(PRESET_PROMPT)}">${esc(promptVal)}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button class="sz-btn primary" data-act="save-settings">保存</button>
         <button class="sz-btn" data-act="reset-prompt">重置为预设</button>
       </div>
-    </div>
-    <div class="sz-field">
-      <span class="sz-label">清空记录</span>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select class="sz-input" data-role="clear-select" style="flex:1;min-width:120px">
-          <option value="">— 选择要清空的记录 —</option>
-          <option value="all">清空全部（目标 + 记录 + 队列）</option>
-          <option value="slacking">清空「摸鱼」</option>
-          ${goals.map((g) => `<option value="${esc(g.id)}">清空「${esc(g.title)}」</option>`).join("")}
-        </select>
-        <button class="sz-btn danger" data-act="clear-selected">执行清空</button>
-      </div>
-    </div>
-    <div class="sz-field">
-      <span class="sz-label">存储</span>
-      <div class="sz-note">存储：${Store.driverLabel()}</div>
-    </div>
-    <div class="sz-field">
-      <span class="sz-label">使用说明</span>
-      <div class="sz-note">
-        开启工作模式后，浏览网页会自动记录并按目标归档；在目标里拆任务/子任务，浏览内容会逐步推进待办。
-      </div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="sz-btn" data-act="help">查看使用说明</button>
-      </div>
-    </div>
-    <div class="sz-field">
+    </section>
+    <section class="sz-field sz-setting-card">
       <span class="sz-label">配套 Skill 下载</span>
       <div style="display:flex;gap:2px;margin-bottom:8px">
         ${cloneTabs.map((t) => `<button class="sz-btn" data-act="clone-tab" data-tab="${t.key}" style="border-bottom:${t.key === activeClone.key ? "2px solid transparent" : "2px solid var(--accent)"};border-radius:4px 4px 0 0;background:${t.key === activeClone.key ? "var(--bg-hover)" : "transparent"};padding:4px 10px;font-size:13px">${esc(t.label)}</button>`).join("")}
@@ -1751,8 +1897,8 @@ this.els.body.innerHTML = `
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(activeClone.cmd)}</span>
         <button class="sz-btn" data-act="copy-clone" data-cmd="${esc(activeClone.cmd)}" style="padding:2px 8px;font-size:12px;flex-shrink:0">复制</button>
       </div>
-    </div>
-    <div class="sz-project-footer">
+    </section>
+    <section class="sz-project-footer sz-setting-card">
       <div class="sz-project-meta">
         <span><strong>版本</strong><b>${APP_VERSION}</b></span>
         <span class="sz-doc-placeholder" aria-disabled="true">${ICONS.globe} 官方文档</span>
@@ -1765,7 +1911,7 @@ this.els.body.innerHTML = `
       <a class="sz-star-project" href="https://github.com/Winddfall/Glean" target="_blank" rel="noopener noreferrer">
         ${ICONS.github}<span>为项目点亮⭐</span>
       </a>
-    </div>`;
+    </section>`;
   },
   renderExportPop(): void {
     const pop = this.root!.querySelector('[data-role="export-pop"]') as HTMLDivElement;
