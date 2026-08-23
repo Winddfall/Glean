@@ -5,6 +5,7 @@ export interface Goal {
   title: string;
   status: "active" | "done" | "archived";
   createdAt: number;
+  color?: string;           // 目标在面板中的标识色（#RRGGBB）
   prompt?: string;          // 目标级分类提示词
   tasks?: Task[];           // 二级：任务
   todos: Todo[];

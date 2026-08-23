@@ -14,6 +14,13 @@ import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, Searc
 
 // 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
 const PRESET_PROMPT = PRESET_ANALYSIS_PROMPT;
+const APP_VERSION = "0.1.0";
+const GOAL_COLORS = ["#9ca3af", "#fb7185", "#fb923c", "#fbbf24", "#4ade80", "#60a5fa", "#c084fc"] as const;
+const DEFAULT_GOAL_COLOR = "#4ade80";
+
+function goalColor(goal: Goal | undefined): string {
+  return goal?.color && /^#[0-9a-f]{6}$/i.test(goal.color) ? goal.color.toLowerCase() : DEFAULT_GOAL_COLOR;
+}
 
 // 内置站点搜索 URL 模板：用户填裸域名（无 {q} 且无路径）时，自动映射到该站点的搜索结果页，实现一键跳转并搜索。
 // 模板按域名匹配，命中后 {q} 会被搜索词替换。
@@ -55,10 +62,13 @@ const ICONS = {
   sun: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
   edit: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  target: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
   drag: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
   download: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
   copy: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+  github: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3.3-.4 6.8-1.6 6.8-7A5.4 5.4 0 0 0 19.4 4 5 5 0 0 0 19.3.5S18.2.1 15 1.8a13.4 13.4 0 0 0-6 0C5.8.1 4.7.5 4.7.5A5 5 0 0 0 4.6 4a5.4 5.4 0 0 0-1.4 3.7c0 5.4 3.5 6.6 6.8 7A4.8 4.8 0 0 0 9 18v4"/><path d="M9 18c-4.5 2-5-2-7-2"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></svg>',
   ext: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>',
 };
@@ -200,9 +210,13 @@ export const Panel = {
   recQuery: "",
   recSort: "time" as "time" | "rel",
   recGroup: null as string | null, // 组内视图：当前选中分组的 key，null 为总览
+  recReturnTab: null as "goals" | null, // 从目标树进入记录分组时，返回目标标签页
   recCollapsed: new Set<string>(), // 记录标签页折叠的分组 key
   collapsed: new Set<string>(), // 折叠的分类节点（"g:{id}" | "t:{id}"）
+  editingGoal: null as null | string, // 正在内联编辑的目标 id
   editingPrompt: null as null | string, // 正在编辑分类提示词的节点 id
+  colorGoalId: null as null | string, // 正在选择标识色的目标 id
+  pendingDelete: null as null | { kind: "goal" | "task" | "subtask" | "record" | "profile"; id: string; parentId?: string; message: string },
   aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
   todoOpen: false,
   exportOpen: false,
@@ -309,20 +323,28 @@ export const Panel = {
     this.render();
   },
   onClick(e: MouseEvent): void {
-    const btn = (e.target as Element).closest("[data-act]") as HTMLElement | null;
+    const target = e.target as Element;
+    const btn = target.closest("[data-act]") as HTMLElement | null;
     if (!btn) {
       // 点击导出浮层外部区域时关闭浮层
-      const t = e.target as Element;
-      if (this.exportOpen && !t.closest('[data-role="export-pop"]')) {
+      if (this.exportOpen && !target.closest('[data-role="export-pop"]')) {
         this.exportOpen = false;
         this.renderExportPop();
+      }
+      if (this.colorGoalId && !target.closest('[data-role="goal-palette"]')) {
+        this.colorGoalId = null;
+        this.render();
       }
       return;
     }
     const act = btn.dataset.act;
+    if (this.colorGoalId && act !== "toggle-goal-color" && act !== "set-goal-color") {
+      this.colorGoalId = null;
+      this.root?.querySelector('[data-role="goal-palette"]')?.remove();
+    }
     if (act === "fab") { if (!this.suppressFabClick) this.els.panel.classList.toggle("open"); } // 拖拽后的 click 不触发展开
     else if (act === "close") this.els.panel.classList.remove("open");
-    else if (act === "tab") this.switchTab(btn.dataset.tab!);
+    else if (act === "tab") { this.recReturnTab = null; this.switchTab(btn.dataset.tab!); }
     else if (act === "export") { this.exportOpen = !this.exportOpen; this.renderExportPop(); }
     else if (act === "export-selected") this.exportSelected();
     else if (act === "export-cancel") this.exportCancel();
@@ -333,14 +355,29 @@ export const Panel = {
     else if (act === "add-goal") this.addNode("goal", "");
     else if (act === "ai-parse-goal") this.parseGoalWithAI();
     else if (act === "edit-goal") this.editGoal(btn.dataset.id || "");
+    else if (act === "save-goal-title") this.saveGoalTitle(btn.dataset.id || "");
+    else if (act === "cancel-goal-title") { this.editingGoal = null; this.render(); }
     else if (act === "edit-task") this.editTask(btn.dataset.id || "", btn.dataset.pid || "");
     else if (act === "edit-sub") this.editSub(btn.dataset.id || "", btn.dataset.pid || "");
-    else if (act === "del-goal") this.delGoal(btn.dataset.id || "");
-    else if (act === "del-task") this.delTask(btn.dataset.id || "", btn.dataset.pid || "");
-    else if (act === "del-sub") this.delSub(btn.dataset.id || "", btn.dataset.pid || "");
+    else if (act === "del-goal") this.askDelete("goal", btn.dataset.id || "", undefined, "删除这个目标？已归档的记录会保留。");
+    else if (act === "del-task") this.askDelete("task", btn.dataset.id || "", btn.dataset.pid || "", "删除这个任务及其子任务？");
+    else if (act === "del-sub") this.askDelete("subtask", btn.dataset.id || "", btn.dataset.pid || "", "删除这个子任务？");
+    else if (act === "confirm-delete") this.confirmDelete();
+    else if (act === "cancel-delete") { this.pendingDelete = null; this.render(); }
     else if (act === "toggle-goal") this.toggleGoal(btn.dataset.id || "");
     else if (act === "toggle-node") this.toggleNode(btn.dataset.id || "");
-    else if (act === "edit-prompt") { this.editingPrompt = btn.dataset.id || ""; this.render(); }
+    else if (act === "toggle-goal-color") {
+      const id = btn.dataset.id || "";
+      this.colorGoalId = this.colorGoalId === id ? null : id;
+      this.render();
+    }
+    else if (act === "set-goal-color") this.setGoalColor(btn.dataset.id || "", btn.dataset.color || "");
+    else if (act === "edit-prompt") {
+      const id = btn.dataset.id || "";
+      this.editingPrompt = id;
+      this.render();
+      this.resizePromptInput(id);
+    }
     else if (act === "prompt-save") this.savePrompt(btn.dataset.pkind as "goal" | "task" | "subtask", btn.dataset.id || "");
     else if (act === "prompt-cancel") { this.editingPrompt = null; this.render(); }
     else if (act === "ai-confirm") this.confirmAiDraft();
@@ -360,7 +397,7 @@ export const Panel = {
     else if (act === "leave-group") this.leaveGroup();
     else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
     else if (act === "toggle-rec-group") this.toggleRecGroup(btn.dataset.key!);
-    else if (act === "del-record") this.delRecord(btn.dataset.key || "");
+    else if (act === "del-record") this.askDelete("record", btn.dataset.key || "", undefined, "确定删除这条记录？此操作不可恢复。");
     else if (act === "theme") this.toggleTheme();
     else if (act === "reset-prompt") this.resetPrompt();
     else if (act === "clear-selected") this.clearSelected();
@@ -370,15 +407,20 @@ export const Panel = {
     else if (act === "copy-clone") this.copyText(btn.dataset.cmd || "");
     else if (act === "help") this.showHelp();
     else if (act === "add-profile") this.addProfile();
-    else if (act === "del-profile") this.delProfile(btn.dataset.kind as "facts" | "preferences", Number(btn.dataset.idx || 0));
+    else if (act === "del-profile") {
+      const kind = btn.dataset.kind as "facts" | "preferences";
+      const id = kind + ":" + (btn.dataset.idx || "0");
+      this.askDelete("profile", id, undefined, "删除这条画像信息？");
+    }
     else if (act === "ai-profile") this.generateProfileWithAI();
     else if (act === "ac-complete") this.completeInput();
     else if (act === "send-ai") this.sendSelectionToAI("analyze");
     else if (act === "send-ai-summary") this.sendSelectionToAI("summary");
   },
   onInput(e: Event): void {
-    const t = e.target as HTMLInputElement;
+    const t = e.target as HTMLInputElement | HTMLTextAreaElement;
     if (t.matches('[data-role="rec-search"]')) { this.recQuery = t.value; this.renderRecords(); }
+    else if (t.matches('.sz-prompt-input')) this.resizePromptInput(undefined, t as HTMLTextAreaElement);
   },
   onChange(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLSelectElement;
@@ -393,6 +435,8 @@ export const Panel = {
       const v = (t as HTMLInputElement).value.trim();
       saveSettings({ linkedUrl: v });
       if (v) this.linkedUrlNotice(v);
+    } else if (t.matches('[data-role="goal-color-input"]')) {
+      this.setGoalColor(t.dataset.id || "", (t as HTMLInputElement).value);
     }
   },
   onKeydown(e: KeyboardEvent): void {
@@ -402,11 +446,28 @@ export const Panel = {
         if (typeof (window as any).LLMBridge !== "undefined") this.parseGoalWithAI();
         else this.addNode("goal", "");
       }
+      else if (t.matches('[data-role="goal-title-input"]')) this.saveGoalTitle((t as HTMLElement).dataset.id || "");
       else if (t.matches('[data-role="task-input"]')) this.addNode("task", (t as HTMLElement).dataset.pid || "");
       else if (t.matches('[data-role="sub-input"]')) this.addNode("subtask", (t as HTMLElement).dataset.pid || "");
     } else if (e.key === "Escape") {
       if (this.exportOpen) { this.exportOpen = false; this.renderExportPop(); }
       if (this.todoOpen) { this.todoOpen = false; this.renderTodo(); }
+      if (this.colorGoalId) { this.colorGoalId = null; this.render(); }
+      if (this.editingGoal) { this.editingGoal = null; this.render(); }
+    }
+  },
+
+  resizePromptInput(id?: string, target?: HTMLTextAreaElement): void {
+    const fields = target
+      ? [target]
+      : Array.from(this.root?.querySelectorAll<HTMLTextAreaElement>(id
+        ? `[data-role="prompt-input"][data-id="${id}"]`
+        : ".sz-prompt-input") || []);
+    for (const field of fields) {
+      field.style.height = "auto";
+      const height = Math.min(Math.max(field.scrollHeight, 38), 120);
+      field.style.height = height + "px";
+      field.style.overflowY = height >= 120 ? "auto" : "hidden";
     }
   },
 
@@ -595,15 +656,23 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     }
   },
   editGoal(id: string): void {
+    if (!Store.read<Goal[]>(K.goals, []).some((g) => g.id === id)) return;
+    this.editingGoal = id;
+    this.render();
+    const input = this.root?.querySelector(`[data-role="goal-title-input"][data-id="${id}"]`) as HTMLInputElement | null;
+    input?.focus();
+    input?.select();
+  },
+  saveGoalTitle(id: string): void {
+    const input = this.root?.querySelector(`[data-role="goal-title-input"][data-id="${id}"]`) as HTMLInputElement | null;
+    const title = (input?.value || "").trim();
+    if (!title) return;
     const goals = Store.read<Goal[]>(K.goals, []);
     const g = goals.find((x) => x.id === id);
     if (!g) return;
-    const title = prompt("目标名称", g.title);
-    if (title == null) return;
-    const t = title.trim();
-    if (!t) return;
-    g.title = t;
+    g.title = title;
     Store.write(K.goals, goals);
+    this.editingGoal = null;
     this.render();
   },
   editTask(id: string, goalId: string): void {
@@ -639,6 +708,16 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     if (!g) return;
     g.status = g.status === "active" ? "done" : "active";
     Store.write(K.goals, goals);
+    this.render();
+  },
+  setGoalColor(id: string, color: string): void {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+    const goals = Store.read<Goal[]>(K.goals, []);
+    const g = goals.find((x) => x.id === id);
+    if (!g) return;
+    g.color = color.toLowerCase();
+    Store.write(K.goals, goals);
+    this.colorGoalId = null;
     this.render();
   },
   // 折叠/展开分类节点（key = "g:{id}" | "t:{id}"）
@@ -717,8 +796,33 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.aiDraft = null;
     this.render();
   },
+  askDelete(kind: "goal" | "task" | "subtask" | "record" | "profile", id: string, parentId: string | undefined, message: string): void {
+    this.pendingDelete = { kind, id, parentId, message };
+    this.render();
+  },
+  confirmDelete(): void {
+    const pending = this.pendingDelete;
+    if (!pending) return;
+    this.pendingDelete = null;
+    if (pending.kind === "goal") this.delGoal(pending.id);
+    else if (pending.kind === "task") this.delTask(pending.id, pending.parentId || "");
+    else if (pending.kind === "subtask") this.delSub(pending.id, pending.parentId || "");
+    else if (pending.kind === "record") this.delRecord(pending.id);
+    else {
+      const [kind, index] = pending.id.split(":");
+      this.delProfile(kind as "facts" | "preferences", Number(index));
+    }
+  },
+  deleteConfirm(kind: "goal" | "task" | "subtask" | "record" | "profile", id: string, parentId?: string): string {
+    const p = this.pendingDelete;
+    if (!p || p.kind !== kind || p.id !== id || (p.parentId || "") !== (parentId || "")) return "";
+    return `<div class="sz-inline-confirm">
+      <span>${esc(p.message)}</span>
+      <button class="sz-btn danger" data-act="confirm-delete">确认删除</button>
+      <button class="sz-btn" data-act="cancel-delete">取消</button>
+    </div>`;
+  },
   delGoal(id: string): void {
-    if (!confirm("删除这个目标？已归档的记录会保留。")) return;
     Store.write(K.goals, Store.read<Goal[]>(K.goals, []).filter((x) => x.id !== id));
     this.render();
   },
@@ -746,7 +850,6 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.render();
   },
   delRecord(key: string): void {
-    if (!confirm("确定删除这条记录？此操作不可恢复。")) return;
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const queue = Store.read<QueueItem[]>(K.queue, []);
     const isMatch = key.includes(":");
@@ -1155,19 +1258,24 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
 
   // ---- 组内视图 ----
   enterGroup(key: string): void {
+    this.recReturnTab = null;
     this.recGroup = key;
     this.recQuery = "";
     this.els.searchInput.value = "";
     this.render();
   },
   leaveGroup(): void {
+    const returnTab = this.recReturnTab;
+    this.recReturnTab = null;
     this.recGroup = null;
     this.recQuery = "";
     this.els.searchInput.value = "";
-    this.render();
+    if (returnTab === "goals") this.switchTab("goals");
+    else this.render();
   },
   // 从目标树点击分类跳转：切到记录 Tab 并进入对应分组
   gotoGroup(id: string, kind?: string): void {
+    this.recReturnTab = this.tab === "goals" ? "goals" : null;
     if (id === "slacking") this.recGroup = "slacking";
     else if (kind === "task") this.recGroup = "task:" + id;
     else if (kind === "subtask") this.recGroup = "subtask:" + id;
@@ -1236,7 +1344,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     // 分类提示词（分类定义）：内联编辑面板
     const promptEditor = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string =>
       `<div class="sz-prompt-edit sz-prompt-edit-${kind}">
-        <textarea class="sz-textarea" data-role="prompt-input" data-id="${esc(id)}" rows="2" placeholder="分类定义：告诉 AI 这个分类涵盖哪些内容，用于自动归档判断">${esc(prompt)}</textarea>
+        <textarea class="sz-textarea sz-prompt-input" data-role="prompt-input" data-id="${esc(id)}" rows="1" placeholder="告诉 AI，这里收什么">${esc(prompt)}</textarea>
         <div class="sz-prompt-actions">
           <button class="sz-btn primary" data-act="prompt-save" data-id="${esc(id)}" data-pkind="${kind}">${ICONS.check} 保存</button>
           <button class="sz-btn" data-act="prompt-cancel">取消</button>
@@ -1244,19 +1352,22 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       </div>`;
     // 分类定义按钮：放在标题同行，点击后进入内联编辑
     const promptChip = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string =>
-      `<button class="sz-cat-btn ${prompt ? "" : "empty"}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="${prompt ? "点击编辑分类定义" : "点击添加分类定义"}">${prompt ? "分类定义" : "＋ 分类定义"}</button>`;
-    // 任务/子任务仍沿用标题下方一行的展示方式
-    const promptRow = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string => {
-      if (this.editingPrompt === id) return promptEditor(kind, id, prompt);
-      if (!prompt) return `<div class="sz-prompt sz-prompt-${kind} empty" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击添加分类定义">＋ 分类定义</div>`;
-      return `<div class="sz-prompt sz-prompt-${kind}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="点击编辑分类定义"><span class="sz-prompt-text">${esc(prompt)}</span></div>`;
+      `<button class="sz-cat-btn ${prompt ? "" : "empty"}" data-act="edit-prompt" data-id="${esc(id)}" data-pkind="${kind}" title="${prompt ? "点击编辑分类定义" : "点击添加分类定义"}">${prompt ? "<span class='sz-cat-dot'></span>分类定义" : "＋ 分类定义"}</button>`;
+    const colorPalette = (g: Goal): string => {
+      const current = goalColor(g);
+      const customSelected = !GOAL_COLORS.some((color) => color === current);
+      return `<div class="sz-goal-palette" data-role="goal-palette" aria-label="选择目标颜色">
+        ${GOAL_COLORS.map((color) => `<button class="sz-color-swatch ${current === color ? "selected" : ""}" data-act="set-goal-color" data-id="${esc(g.id)}" data-color="${color}" style="--swatch:${color}" title="选择颜色"></button>`).join("")}
+        <label class="sz-color-swatch sz-color-custom ${customSelected ? "selected" : ""}" title="自定义颜色">
+          <input type="color" data-role="goal-color-input" data-id="${esc(g.id)}" value="${current}" aria-label="自定义目标颜色">
+        </label>
+      </div>`;
     };
-
     // 折叠开关：无下级时用占位对齐
     const caret = (key: string, hasChild: boolean): string => {
       if (!hasChild) return `<span class="sz-caret-spacer"></span>`;
       const collapsed = this.collapsed.has(key);
-      return `<button class="sz-caret ${collapsed ? "" : "open"}" data-act="toggle-node" data-id="${esc(key)}" title="${collapsed ? "展开下级" : "折叠下级"}">${ICONS.chevron}</button>`;
+      return `<button class="sz-ibtn sz-rec-caret ${collapsed ? "" : "open"}" data-act="toggle-node" data-id="${esc(key)}" title="${collapsed ? "展开下级" : "折叠下级"}">${ICONS.chevron}</button>`;
     };
 
     const subtaskRow = (g: Goal, s: Subtask): string => `
@@ -1264,68 +1375,84 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
         <span class="sz-caret-spacer"></span>
         <span class="sz-level sz-level-subtask" aria-hidden="true"></span>
-        <span class="sz-ntitle sz-ntitle-subtask clickable" data-act="goto-rec" data-id="${esc(s.id)}" data-kind="subtask" title="点击查看该子任务下的记录">${esc(s.title)}</span>
+        <span class="sz-title-wrap">
+          <span class="sz-ntitle sz-ntitle-subtask clickable" data-act="goto-rec" data-id="${esc(s.id)}" data-kind="subtask" title="点击查看该子任务下的记录">${esc(s.title)}</span>
+          ${promptChip("subtask", s.id, s.prompt || "")}
+        </span>
         <button class="sz-ibtn" data-act="edit-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-sub" data-id="${esc(s.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
-      ${promptRow("subtask", s.id, s.prompt || "")}`;
+      ${this.deleteConfirm("subtask", s.id, g.id)}
+      ${this.editingPrompt === s.id ? promptEditor("subtask", s.id, s.prompt || "") : ""}`;
 
     const taskRow = (g: Goal, t: Task): string => {
-      const hasSub = (t.subtasks || []).length > 0;
       const collapsed = this.collapsed.has("t:" + t.id);
       return `
       <div class="sz-row sz-row-task" draggable="true" data-kind="task" data-id="${esc(t.id)}" data-parent="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
-        ${caret("t:" + t.id, hasSub)}
+        ${caret("t:" + t.id, true)}
         <span class="sz-level sz-level-task" aria-hidden="true"></span>
-        <span class="sz-ntitle sz-ntitle-task clickable" data-act="goto-rec" data-id="${esc(t.id)}" data-kind="task" title="点击查看该任务下的记录">${esc(t.title)}</span>
+        <span class="sz-title-wrap">
+          <span class="sz-ntitle sz-ntitle-task clickable" data-act="goto-rec" data-id="${esc(t.id)}" data-kind="task" title="点击查看该任务下的记录">${esc(t.title)}</span>
+          ${promptChip("task", t.id, t.prompt || "")}
+        </span>
         <button class="sz-ibtn" data-act="edit-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
         <button class="sz-ibtn" data-act="del-task" data-id="${esc(t.id)}" data-pid="${esc(g.id)}" title="删除">${ICONS.trash}</button>
       </div>
-      ${promptRow("task", t.id, t.prompt || "")}
+      ${this.deleteConfirm("task", t.id, g.id)}
+      ${this.editingPrompt === t.id ? promptEditor("task", t.id, t.prompt || "") : ""}
       ${collapsed ? "" : `
       <div class="sz-children">
         ${(t.subtasks || []).map((s) => subtaskRow(g, s)).join("")}
-        <div class="sz-row">
+        <div class="sz-row sz-add-node-row">
           <span class="sz-caret-spacer"></span>
-          <input class="sz-input" data-role="sub-input" data-pid="${esc(g.id)}" data-task="${esc(t.id)}" placeholder="添加子任务，回车确认" style="font-size:12px;padding:3px 6px">
+          <input class="sz-input sz-sub-input" data-role="sub-input" data-pid="${esc(g.id)}" data-task="${esc(t.id)}" placeholder="添加子任务" style="font-size:12px;padding:3px 6px">
         </div>
       </div>`}`;
     };
 
     const goalRow = (g: Goal): string => {
-      const hasTasks = (g.tasks || []).length > 0;
       const collapsed = this.collapsed.has("g:" + g.id);
       return `
     <div class="sz-node">
       <div class="sz-row sz-row-goal" draggable="true" data-kind="goal" data-id="${esc(g.id)}">
         <span class="sz-grip" title="拖拽排序">${ICONS.drag}</span>
-        ${caret("g:" + g.id, hasTasks)}
-        <span class="sz-level sz-level-goal" aria-hidden="true"></span>
-        <span class="sz-ntitle sz-ntitle-goal clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
-        ${promptChip("goal", g.id, g.prompt || "")}
+        ${caret("g:" + g.id, true)}
+        <button class="sz-goal-color" data-act="toggle-goal-color" data-id="${esc(g.id)}" style="--goal-color:${goalColor(g)}" title="更改目标颜色" aria-label="更改目标颜色">${ICONS.target}</button>
+        ${this.editingGoal === g.id ? `
+        <span class="sz-goal-title-edit">
+          <input class="sz-input sz-goal-title-input" data-role="goal-title-input" data-id="${esc(g.id)}" value="${esc(g.title)}" aria-label="目标名称">
+          <button class="sz-ibtn" data-act="save-goal-title" data-id="${esc(g.id)}" title="保存目标名称">${ICONS.check}</button>
+          <button class="sz-ibtn" data-act="cancel-goal-title" title="取消编辑">${ICONS.x}</button>
+        </span>` : `
+        <span class="sz-title-wrap">
+          <span class="sz-ntitle sz-ntitle-goal clickable ${g.status !== "active" ? "done" : ""}" data-act="goto-rec" data-id="${esc(g.id)}" data-kind="goal" title="点击查看该目标下的记录">${esc(g.title)}</span>
+          ${promptChip("goal", g.id, g.prompt || "")}
+        </span>
         <button class="sz-ibtn sz-goal-status" data-act="toggle-goal" data-id="${esc(g.id)}" title="${g.status === "active" ? "标记完成" : "重新开启"}">${ICONS.check}</button>
         <button class="sz-ibtn" data-act="edit-goal" data-id="${esc(g.id)}" title="编辑">${ICONS.edit}</button>
-        <button class="sz-ibtn" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>
+        <button class="sz-ibtn" data-act="del-goal" data-id="${esc(g.id)}" title="删除">${ICONS.trash}</button>`}
       </div>
+      ${this.deleteConfirm("goal", g.id)}
+      ${this.colorGoalId === g.id ? colorPalette(g) : ""}
       ${this.editingPrompt === g.id ? promptEditor("goal", g.id, g.prompt || "") : ""}
       ${collapsed ? "" : `
       <div class="sz-children">
         ${(g.tasks || []).map((t) => taskRow(g, t)).join("")}
-        <div class="sz-row">
+        <div class="sz-row sz-add-node-row">
           <span class="sz-caret-spacer"></span>
-          <input class="sz-input" data-role="task-input" data-pid="${esc(g.id)}" placeholder="添加任务，回车确认" style="font-size:12px;padding:3px 6px">
+          <input class="sz-input sz-task-input" data-role="task-input" data-pid="${esc(g.id)}" placeholder="添加任务" style="font-size:12px;padding:3px 6px">
         </div>
       </div>`}
     </div>`};
 
 this.els.body.innerHTML = `
 <div class="sz-goal-toolbar">
-<input class="sz-input" data-role="goal-input" placeholder="输入需求，AI 自动拆解" style="flex:1">
+<input class="sz-input" data-role="goal-input" placeholder="随心输入，智能拆解" style="flex:1">
 <button class="sz-btn" data-act="ai-parse-goal" title="用 AI 把需求解析成目标并拆解任务/子任务">${ICONS.bulb} AI 拆解</button>
 </div>
     ${this.renderAiDraft()}
-    ${goals.length ? '<div class="sz-note" style="margin-bottom:8px">拖拽左侧手柄可调整分类优先级，代办将提示优先级最高且未完成的任务。—— P0！全都是P0！</div>' : ""}
+    ${goals.length ? '<div class="sz-note sz-priority-note" style="margin-bottom:8px">拖动排序，待办优先提示靠前任务。<span>—— P0！全都是P0！</span></div>' : ""}
     ${goals.map(goalRow).join("") || '<div class="sz-empty">暂无目标。添加目标后，拾知会自动归档浏览记录。</div>'}
     <div class="sz-node" style="opacity:.95">
       <div class="sz-row" style="cursor:default">
@@ -1333,7 +1460,7 @@ this.els.body.innerHTML = `
         <span class="sz-caret-spacer"></span>
         <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">摸鱼</span>
       </div>
-      <div class="sz-prompt" style="cursor:default" title="固定分类定义">不属于任何其它目标的记录</div>
+      <div class="sz-prompt sz-prompt-fixed" title="固定分类定义">不属于任何其它目标的记录</div>
     </div>`;
   },
   // AI 拆解结果确认卡片（可编辑后创建）
@@ -1381,7 +1508,7 @@ this.els.body.innerHTML = `
     type RecItem = { record: BrowseRecord; match?: MatchEntry };
     const groups: { key: string; name: string; color: string; items: RecItem[] }[] = goals.map((g) => ({
       key: "goal:" + g.id, name: g.title,
-      color: g.status === "active" ? "#16a34a" : "#9ca3af", items: [] as RecItem[],
+      color: g.status === "active" ? goalColor(g) : "#9ca3af", items: [] as RecItem[],
     }));
     groups.push(
       { key: "slacking", name: "摸鱼", color: "#d97706", items: [] as RecItem[] },
@@ -1437,7 +1564,7 @@ this.els.body.innerHTML = `
           <span class="sz-rel ${relCls}" title="${esc(relTitle)}"></span>
           <div class="sz-rec-main">
             <a class="sz-rtitle" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(displayTitle)}">${highlightText(truncatedTitle, q)}</a>
-            <div class="sz-rmeta">${fmtDate(r.capturedAt)}${m ? ` · 命中分类` : ""}</div>
+            <div class="sz-rmeta">${fmtDate(r.capturedAt)}</div>
           </div>
           <div class="sz-rec-actions">
             ${relBadge}
@@ -1447,6 +1574,7 @@ this.els.body.innerHTML = `
           </div>
         </div>
         <div class="sz-rec-detail">${kwHtml}${findingsHtml}${notesHtml}${keyQuotesHtml}${r.category === "pending" ? "正在分析中，请稍等片刻~" : ""}</div>
+        ${this.deleteConfirm("record", itemKey)}
         ${r.category === "error" && r.excerpt ? `<button class="sz-retry" data-act="retry" data-rid="${esc(r.id)}">重试</button>` : ""}
       </div>`;
     };
@@ -1467,7 +1595,7 @@ this.els.body.innerHTML = `
         const gid = this.recGroup.slice(5);
         const g = goals.find((x) => x.id === gid);
         groupName = g?.title || "未知目标";
-        groupColor = g?.status === "active" ? "#16a34a" : "#9ca3af";
+        groupColor = g?.status === "active" ? goalColor(g) : "#9ca3af";
         isSearchable = true;
         items = recs.flatMap((r) => {
           if (r.category === "pending" || r.category === "error") return [];
@@ -1523,8 +1651,8 @@ this.els.body.innerHTML = `
         .sort(this.recSort === "rel" ? byRel : byTime);
       let html = `<div class="sz-sec"><button class="sz-back" data-act="leave-group" title="返回全部分组">${ICONS.back}返回</button><span class="sz-dot" style="background:${groupColor}"></span><span class="sz-gtitle">${esc(groupName)}</span><span class="sz-count">${filtered.length}</span></div>`;
       if (q) html += `<div class="sz-note" style="margin-bottom:6px">搜索"${esc(q)}"，匹配 ${filtered.length} 条记录</div>`;
-      html += filtered.slice(0, 50).map((item) => recHtml(item, q)).join("")
-        || (q ? '<div class="sz-empty">未找到匹配的记录</div>' : '<div class="sz-empty">该分组暂无记录</div>');
+      html += `<div class="sz-rec-list">${filtered.slice(0, 50).map((item) => recHtml(item, q)).join("")
+        || (q ? '<div class="sz-empty">未找到匹配的记录</div>' : '<div class="sz-empty">该分组暂无记录</div>')}</div>`;
       this.els.body.innerHTML = html;
       return;
     }
@@ -1540,7 +1668,7 @@ this.els.body.innerHTML = `
         <span class="sz-gtitle sz-group-title" data-act="enter-group" data-key="${esc(g.key)}" title="进入该分组">${esc(g.name)}</span>
         <span class="sz-count">${g.items.length}</span>
       </div>`;
-      if (!collapsed) html += g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("");
+      if (!collapsed) html += `<div class="sz-rec-list">${g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("")}</div>`;
     }
     this.els.body.innerHTML = html || '<div class="sz-empty">暂无记录</div>';
   },
@@ -1553,6 +1681,7 @@ this.els.body.innerHTML = `
           <span class="t">${esc(x)}</span>
           <button class="sz-ibtn" data-act="del-profile" data-kind="${kind}" data-idx="${i}" title="删除">${ICONS.trash}</button>
         </div>
+        ${this.deleteConfirm("profile", kind + ":" + i)}
       </div>`).join("");
     this.els.body.innerHTML = `
     <div class="sz-field">
@@ -1622,6 +1751,20 @@ this.els.body.innerHTML = `
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(activeClone.cmd)}</span>
         <button class="sz-btn" data-act="copy-clone" data-cmd="${esc(activeClone.cmd)}" style="padding:2px 8px;font-size:12px;flex-shrink:0">复制</button>
       </div>
+    </div>
+    <div class="sz-project-footer">
+      <div class="sz-project-meta">
+        <span><strong>版本</strong><b>${APP_VERSION}</b></span>
+        <span class="sz-doc-placeholder" aria-disabled="true">${ICONS.globe} 官方文档</span>
+      </div>
+      <a class="sz-issue-link" href="https://github.com/Winddfall/Glean/issues" target="_blank" rel="noopener noreferrer">
+        <span class="sz-issue-star" aria-hidden="true">⭐</span>
+        <span>觉得拾知好用吗？在 Github 提出 Issue，能帮助我们更好地改进它！</span>
+        ${ICONS.ext}
+      </a>
+      <a class="sz-star-project" href="https://github.com/Winddfall/Glean" target="_blank" rel="noopener noreferrer">
+        ${ICONS.github}<span>为项目点亮⭐</span>
+      </a>
     </div>`;
   },
   renderExportPop(): void {
