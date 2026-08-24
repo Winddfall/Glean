@@ -11,6 +11,7 @@ export const K = {
   theme: "shizhi.theme",
   themeColor: "shizhi.themeColor",
   profile: "shizhi.profile",
+  profileWorkPageCount: "shizhi.profileWorkPageCount",
   recSort: "shizhi.recSort",
   fabPos: "shizhi.fabPos",
   panelSize: "shizhi.panelSize",

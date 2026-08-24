@@ -5,6 +5,7 @@ import { backoffMs, sleep, parseJsonLoose, uid, normalizeSearchTerm } from "./co
 import { buildPagePrompt, validateAnalysis } from "./core/prompt.js";
 import { Store, settings } from "./store.js";
 import { Panel } from "./panel/panel.js";
+import { PROFILE_UPDATE_EVERY_WORK_PAGES, recordWorkPage, updateProfileFromWorkRecords } from "./profile.js";
 import type { QueueItem, BrowseRecord, Goal, Todo } from "./types.js";
 
 let pumping = false;
@@ -25,10 +26,21 @@ export async function pumpQueue(): Promise<void> {
         continue;
       }
       try {
-        await analyze(rec, item);
+        const isWorkPage = await analyze(rec, item);
         Store.write(K.records, recs);
         Store.write(K.queue, Store.read<QueueItem[]>(K.queue, []).filter((i) => i.recordId !== item.recordId));
         Panel.render();
+        if (isWorkPage && recordWorkPage()) {
+          await sleep(settings().queueGapMs);
+          Panel.toast("已浏览 " + PROFILE_UPDATE_EVERY_WORK_PAGES + " 个工作网页，AI 正在更新用户画像…", "idle");
+          try {
+            const result = await updateProfileFromWorkRecords();
+            Panel.render();
+            Panel.toast("画像已自动更新：" + result.facts + " 条事实、" + result.preferences + " 条偏好", "ok");
+          } catch (profileError) {
+            Panel.toast("画像自动更新失败：" + String(profileError), "err");
+          }
+        }
         await sleep(settings().queueGapMs);
       } catch (e) {
         item.retries = (item.retries || 0) + 1;
@@ -50,7 +62,7 @@ export async function pumpQueue(): Promise<void> {
   }
 }
 
-async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
+async function analyze(rec: BrowseRecord, item: QueueItem): Promise<boolean> {
   const allGoals = Store.read<Goal[]>(K.goals, []);
   const goals = allGoals.filter((g) => g.status === "active");
   const prompt = buildPagePrompt(
@@ -84,8 +96,10 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<void> {
       updateSearchTerms(goal, rec);
     }
     Store.write(K.goals, allGoals);
+    return true;
   } else {
     Panel.toast("已归入摸鱼", "idle");
+    return false;
   }
 }
 
