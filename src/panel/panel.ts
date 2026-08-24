@@ -95,6 +95,7 @@ const ICONS = {
   ext: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>',
   palette: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18h1.2a1.8 1.8 0 0 0 1.2-3.1 1.8 1.8 0 0 1 1.2-3.1H18A3 3 0 0 0 21 12a9 9 0 0 0-9-9Z"/><circle cx="7.5" cy="11" r=".8" fill="currentColor"/><circle cx="9.5" cy="7.5" r=".8" fill="currentColor"/><circle cx="14" cy="7" r=".8" fill="currentColor"/><circle cx="17" cy="10" r=".8" fill="currentColor"/></svg>',
+  fish: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12c1.8-3.2 5-5 8.5-5 3.6 0 6.3 2.2 7.5 5-1.2 2.8-3.9 5-7.5 5-3.5 0-6.7-1.8-8.5-5Z"/><path d="M5.5 12 2 9.4c.7 1.6.7 3.6 0 5.2L5.5 12Z"/><circle cx="16.3" cy="10.8" r=".4" fill="currentColor" stroke="none"/></svg>',
 };
 
 // 当前聚焦的宿主页面输入框（用于输入自动补全）
@@ -361,8 +362,10 @@ export const Panel = {
 
     // 右键「塞给 AI」：在宿主页面选中文字后右键弹出
     document.addEventListener("contextmenu", (e) => this.onContextMenu(e as MouseEvent));
-    document.addEventListener("click", () => {
+    document.addEventListener("click", (e) => {
       if (this.els.ctxmenu && this.els.ctxmenu.classList.contains("open")) this.hideCtxMenu();
+      // 点击扩展 UI 之外的区域时收起待办弹层（标准 popover 行为）
+      if (this.todoOpen && this.els.dock && !(e.composedPath && e.composedPath().includes(this.els.dock))) { this.todoOpen = false; this.renderTodo(); }
     });
 
     // 输入自动补全：监听宿主页面输入框聚焦 + Ctrl+. 触发
@@ -406,16 +409,16 @@ export const Panel = {
       this.colorGoalId = null;
       this.root?.querySelector('[data-role="goal-palette"]')?.remove();
     }
-    if (act === "fab") { if (!this.suppressFabClick) this.els.panel.classList.toggle("open"); } // 拖拽后的 click 不触发展开
+    if (act === "fab") { if (!this.suppressFabClick) { this.els.panel.classList.toggle("open"); if (this.todoOpen) { this.todoOpen = false; this.renderTodo(); } } } // 拖拽后的 click 不触发展开；主面板与待办弹层互斥
     else if (act === "close") this.els.panel.classList.remove("open");
     else if (act === "tab") { this.recReturnTab = null; this.switchTab(btn.dataset.tab!); }
     else if (act === "export") { this.exportOpen = !this.exportOpen; this.renderExportPop(); }
     else if (act === "export-selected") this.exportSelected();
     else if (act === "export-cancel") this.exportCancel();
-    else if (act === "todo-bar") { this.todoOpen = !this.todoOpen; this.renderTodo(); }
+    else if (act === "todo-bar") { this.todoOpen = !this.todoOpen; this.renderTodo(); if (this.todoOpen) this.els.panel.classList.remove("open"); } // 主面板与待办弹层互斥
     else if (act === "todo-close") { this.todoOpen = false; this.renderTodo(); }
-    else if (act === "copy-term") this.copyText(btn.dataset.term || "");
-    else if (act === "search-term") this.searchTerm(btn.dataset.term || "");
+    else if (act === "copy-term") { this.copyText(btn.dataset.term || ""); this.todoOpen = false; this.renderTodo(); }
+    else if (act === "search-term") { this.searchTerm(btn.dataset.term || ""); this.todoOpen = false; this.renderTodo(); }
     else if (act === "add-goal") this.addNode("goal", "");
     else if (act === "ai-parse-goal") this.parseGoalWithAI();
     else if (act === "edit-goal") this.editGoal(btn.dataset.id || "");
@@ -1515,13 +1518,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   renderGoals(): void {
     const goals = Store.read<Goal[]>(K.goals, []);
     const slackingOnly = getState().panelMode === "slacking";
-    const slackingNode = `<div class="sz-node" style="opacity:.95">
-      <div class="sz-row" style="cursor:default">
-        <span class="sz-grip" style="opacity:0">${ICONS.drag}</span>
-        <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">摸鱼</span>
-      </div>
-      <div class="sz-prompt sz-prompt-fixed" title="固定分类定义">不属于任何其它目标的记录</div>
+    const slackingNode = `<div class="sz-slacking" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">
+      <span class="sz-slacking-fish">${ICONS.fish}</span>
+      <span class="sz-slacking-body">
+        <span class="sz-slacking-title">摸鱼池塘</span>
+        <span class="sz-slacking-desc">不属于任何目标的记录，都会游到这里</span>
+      </span>
     </div>`;
     if (slackingOnly) {
       this.els.body.innerHTML = slackingNode;
@@ -1640,7 +1642,11 @@ this.els.body.innerHTML = `
 </div>
     ${this.renderAiDraft()}
     ${goals.length ? '<div class="sz-note sz-priority-note" style="margin-bottom:8px">拖动排序，待办优先提示靠前任务。<span>—— P0！全都是P0！</span></div>' : ""}
-    ${goals.map(goalRow).join("") || '<div class="sz-empty">暂无目标。添加目标后，拾知会自动归档浏览记录。</div>'}
+    ${goals.map(goalRow).join("") || `<div class="sz-empty-card">
+      <div class="sz-empty-card-icon">${ICONS.target}</div>
+      <div class="sz-empty-card-title">还没有目标</div>
+      <div class="sz-empty-card-desc">添加一个目标，拾知会帮你拆解成任务和待办。<br>之后浏览的网页，会<strong>自动归档</strong>到匹配的目标下。</div>
+    </div>`}
     ${slackingNode}`;
   },
   // AI 拆解结果确认卡片（可编辑后创建）
@@ -1664,10 +1670,10 @@ this.els.body.innerHTML = `
     return `
     <div class="sz-ai-confirm">
       <div class="sz-ai-head">AI 拆解结果 —— 请确认或修改后再创建</div>
-      ${d.questions && d.questions.length ? `<div style="background:#fff8e1;border:1px solid #f0d98c;border-radius:6px;padding:8px 10px;margin:8px 0;font-size:12px;color:#7a6a1f">
+      ${d.questions && d.questions.length ? `<div class="sz-ai-questions">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div style="font-weight:600">AI 需要你确认这些点，回答后点击右侧按钮重新拆解：</div>
-          <button class="sz-btn" data-act="ai-reparse" style="font-size:11px;padding:4px 12px;background:var(--accent);color:var(--accent-contrast);border-color:var(--accent);white-space:nowrap">重新拆解</button>
+          <button class="sz-btn primary" data-act="ai-reparse" style="font-size:11px;padding:4px 12px;white-space:nowrap">重新拆解</button>
         </div>
         ${d.questions.map((q, i) => `<div style="margin-bottom:6px"><div>· ${esc(q)}</div><input class="sz-input" data-ai-answer="${i}" placeholder="你的回答" style="margin-top:4px;font-size:12px;padding:4px 6px" value=""></div>`).join("")}
       </div>` : ""}
@@ -1851,7 +1857,11 @@ this.els.body.innerHTML = `
       </div>`;
       if (!collapsed) html += `<div class="sz-rec-list">${g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("")}</div>`;
     }
-    this.els.body.innerHTML = html || '<div class="sz-empty">暂无记录</div>';
+    this.els.body.innerHTML = html || `<div class="sz-empty-card">
+      <div class="sz-empty-card-icon">${ICONS.globe}</div>
+      <div class="sz-empty-card-title">还没有记录</div>
+      <div class="sz-empty-card-desc">开始浏览，这里就会长出你的足迹。<br>工作网页按<strong>目标</strong>分组，摸鱼网页单独算账。</div>
+    </div>`;
   },
   renderProfile(): void {
     const profile = Store.read<Profile>(K.profile, { updatedAt: 0, facts: [], preferences: [] });
@@ -1995,7 +2005,12 @@ this.els.body.innerHTML = `
     }
 
     const list = this.root!.querySelector('[data-role="todo-list"]') as HTMLElement;
+    const countEl = this.root!.querySelector('[data-role="todo-count"]') as HTMLElement | null;
     const activeGoals = goals.filter((g) => g.status === "active");
+    if (countEl) {
+      const openCount = activeGoals.reduce((n, g) => n + (g.todos || []).filter((t) => t.status === "open").length, 0);
+      countEl.textContent = openCount ? String(openCount) : "";
+    }
     if (!activeGoals.length) {
       list.innerHTML = '<div class="sz-empty">暂无目标</div>';
       return;
@@ -2004,7 +2019,7 @@ this.els.body.innerHTML = `
     for (const g of activeGoals) {
       const todos = g.todos || [];
       const tasks = g.tasks || [];
-      html += `<div class="sz-sec">${esc(g.title)}</div>`;
+      html += `<div class="sz-todo-goal"><span class="sz-dot" style="background:${goalColor(g)}"></span><span class="sz-todo-goal-name">${esc(g.title)}</span></div>`;
       const items = todos.length ? todos : tasks.map((task) => ({
         id: task.id,
         text: task.title,
@@ -2025,20 +2040,18 @@ this.els.body.innerHTML = `
           rawTerms = [{ display: base, query: base }];
         }
         const terms = rawTerms.slice(0, 3).map((s) => enrichSearchTerm(normalizeSearchTerm(s)));
-        const termRows = terms.length
-          ? terms.map((st) => `<div class="sz-term-row"><button class="sz-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制">${ICONS.copy} <span>${esc(st.display)}</span></button><button class="sz-search-btn" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索">${ICONS.ext} 搜索</button></div>`).join("")
+        const termChips = terms.length
+          ? `<div class="sz-term-chips">${terms.map((st) => `<span class="sz-term-chip"><button class="sz-term-go" data-act="search-term" data-term="${esc(st.query)}" title="跳转搜索">${esc(st.display)}</button><button class="sz-term-copy" data-act="copy-term" data-term="${esc(st.query)}" title="复制搜索词">${ICONS.copy}</button></span>`).join("")}</div>`
           : `<div style="color:var(--tx-muted);font-size:11px;margin-top:3px">浏览相关页面后搜索词会自动补充</div>`;
         return `
         <div class="sz-todo-item">
-          <div class="sz-todo-text">
+          <div class="sz-todo-row">
             <span class="sz-dot" style="background:${t.status === "done" ? "#16a34a" : "var(--accent)"}"></span>
             <span class="t">${esc(t.text)}</span>
+            <span class="sz-todo-pct">${pct}%</span>
           </div>
           <div class="sz-bar"><i style="width:${pct}%"></i></div>
-          <div class="sz-todo-meta" style="flex-direction:column;align-items:flex-start">
-            <span>${pct}%</span>
-            ${termRows}
-          </div>
+          ${termChips}
         </div>`;
       }).join("");
     }
@@ -2181,7 +2194,10 @@ this.els.body.innerHTML = `
     if (!this.root) return;
     const t = document.createElement("div");
     t.className = "sz-toast " + (kind || "ok");
-    t.textContent = text;
+    const txt = document.createElement("span");
+    txt.className = "txt";
+    txt.textContent = text;
+    t.appendChild(txt);
     this.els.toasts.appendChild(t);
     void t.offsetWidth; // 强制 reflow，确保入场过渡生效
     t.classList.add("show");

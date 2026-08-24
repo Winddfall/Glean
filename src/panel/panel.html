@@ -8,7 +8,7 @@
     <span class="txt" data-role="todo-txt">待办</span>
   </button>
   <div class="sz-todo-pop" data-role="todo-pop">
-    <div class="sz-todo-head"><span>待办建议</span><button class="sz-ibtn" data-act="todo-close" title="关闭">{{close}}</button></div>
+    <div class="sz-todo-head"><span class="sz-todo-title">待办建议</span><span class="sz-count" data-role="todo-count"></span><button class="sz-ibtn" data-act="todo-close" title="关闭">{{close}}</button></div>
     <div class="sz-todo-list" data-role="todo-list"></div>
   </div>
 </div>
@@ -62,8 +62,8 @@
   </div>
   <div class="sz-body"></div>
   <div class="sz-foot">
-    <input class="sz-input" data-role="linked-url" placeholder="关联网址：填站点名或网址，点 ✦ 让 AI 补全搜索参数" aria-label="关联网址">
-    <button class="sz-ibtn sz-accent" data-act="ai-linked" title="AI 补全搜索参数">{{sparkle}}</button>
+    <input class="sz-input" data-role="linked-url" placeholder="站点名或网址，✦ 配好直达" aria-label="关联网址">
+    <button class="sz-ibtn sz-accent" data-act="ai-linked" title="AI 补全搜索参数" style="font-size:14px;line-height:1">✦</button>
   </div>
 </div>
 </div>
