@@ -9,6 +9,7 @@ export const K = {
   queue: "shizhi.queue",
   settings: "shizhi.settings",
   theme: "shizhi.theme",
+  themeColor: "shizhi.themeColor",
   profile: "shizhi.profile",
   recSort: "shizhi.recSort",
   fabPos: "shizhi.fabPos",

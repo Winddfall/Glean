@@ -34,5 +34,7 @@ export function settings(): Settings {
 }
 
 export function getState(): WorkState {
-  return Object.assign({ workMode: false, activeSince: 0 }, Store.read(K.state, {}));
+  const saved = Store.read<Partial<WorkState>>(K.state, {});
+  const panelMode = saved.panelMode === "slacking" || (!saved.panelMode && saved.workMode === false) ? "slacking" : "work";
+  return { workMode: true, activeSince: saved.activeSince || 0, panelMode };
 }

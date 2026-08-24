@@ -110,7 +110,54 @@ test("F1 摸鱼路径：无关网页归入摸鱼分类", async () => {
   }
 });
 
-test("F1 闸门：工作模式关闭时不产生记录", async () => {
+test("模式切换：摸鱼模式仅显示摸鱼目标与记录", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: {
+      relevant: true,
+      goalId: "g_py",
+      summary: "Python 教程导言",
+      keywords: ["Python"],
+      matches: [{ goalId: "g_py", relevance: 95, reasoning: "与学习目标相关", findings: [] }],
+    },
+  });
+  try {
+    const records = JSON.parse(s.window.localStorage.getItem("shizhi.records") || "[]");
+    records.push({
+      id: "slacking-record",
+      url: "https://example.com/fun",
+      origin: "example.com",
+      title: "摸鱼内容",
+      h1: "",
+      meta: "",
+      capturedAt: Date.now(),
+      excerptHash: "slacking",
+      preview: "",
+      category: "slacking",
+      summary: "休闲内容",
+      keywords: [],
+    });
+    s.window.localStorage.setItem("shizhi.records", JSON.stringify(records));
+
+    s.shadow.querySelector('[data-act="panel-mode"][data-mode="slacking"]').click();
+    let body = s.shadow.querySelector(".sz-body").textContent;
+    assert.ok(body.includes("摸鱼"), "目标页保留摸鱼入口");
+    assert.ok(!body.includes("学习 Python 编程"), "目标页隐藏普通目标");
+    const state = JSON.parse(s.window.localStorage.getItem("shizhi.state"));
+    assert.strictEqual(state.panelMode, "slacking", "持久化摸鱼模式");
+    assert.strictEqual(state.workMode, true, "模式切换不关闭网页采集");
+
+    s.shadow.querySelector('[data-tab="records"]').click();
+    body = s.shadow.querySelector(".sz-body").textContent;
+    assert.ok(body.includes("摸鱼内容"), "记录页显示摸鱼记录");
+    assert.ok(!body.includes("学习 Python 编程"), "记录页隐藏普通目标分组");
+    assert.ok(!body.includes("Python 教程导言"), "记录页隐藏目标记录");
+  } finally {
+    s.close();
+  }
+});
+
+test("模式迁移：旧关闭状态映射为摸鱼模式并继续记录", async () => {
   const dom = new JSDOM(HTML, { url: PAGE_URL, runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
   Object.defineProperty(window.document, "visibilityState", { value: "visible", configurable: true });
@@ -118,14 +165,42 @@ test("F1 闸门：工作模式关闭时不产生记录", async () => {
   window.localStorage.setItem("shizhi.state", JSON.stringify({ workMode: false }));
   window.localStorage.setItem("shizhi.goals", JSON.stringify([{ id: "g_py", title: "x", status: "active" }]));
   let called = 0;
-  window.LLMBridge = { async chat() { called++; return "{}"; } };
+  window.LLMBridge = { async chat() { called++; return JSON.stringify({ relevant: false, goalId: null, summary: "摸鱼内容", keywords: [], matches: [] }); } };
   window.eval(SRC);
-  await sleep(800);
+  await sleep(1500);
   try {
-    assert.strictEqual(window.localStorage.getItem("shizhi.records"), null, "无记录写入");
-    assert.strictEqual(called, 0, "不发起 LLM 调用");
+    const records = JSON.parse(window.localStorage.getItem("shizhi.records") || "[]");
+    assert.strictEqual(records[0]?.category, "slacking", "旧关闭状态继续采集并归入摸鱼");
+    assert.strictEqual(called, 1, "继续发起页面分析");
+    const shadow = window.document.getElementById("shizhi-host")?.shadowRoot;
+    assert.ok(shadow.querySelector('[data-mode="slacking"]').classList.contains("act"), "旧关闭状态显示为摸鱼模式");
   } finally {
     window.close();
+  }
+});
+
+test("主题色：调色盘统一更新强调色与悬停色并持久化", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: { relevant: false, goalId: null, summary: "摸鱼内容", keywords: [], matches: [] },
+  });
+  try {
+    const paletteButton = s.shadow.querySelector('[data-act="theme-color"]');
+    const palette = s.shadow.querySelector('[data-role="theme-color-pop"]');
+    assert.ok(paletteButton && palette, "右上角显示主题色入口");
+    paletteButton.click();
+    assert.ok(palette.classList.contains("open"), "点击后展开调色盘");
+    s.shadow.querySelector('[data-act="set-theme-color"][data-color="#3b82f6"]').click();
+    assert.strictEqual(JSON.parse(s.window.localStorage.getItem("shizhi.themeColor")), "#3b82f6");
+    const dock = s.shadow.querySelector(".sz-dock");
+    assert.strictEqual(dock.style.getPropertyValue("--accent"), "#3b82f6");
+    assert.strictEqual(dock.style.getPropertyValue("--bg-hover"), "#eff6ff");
+    assert.strictEqual(s.shadow.querySelector('[data-role="theme-color-hex"]').textContent, "#3B82F6");
+    s.shadow.querySelector('[data-act="theme-color"]').click();
+    s.shadow.querySelector('[data-act="reset-theme-color"]').click();
+    assert.strictEqual(JSON.parse(s.window.localStorage.getItem("shizhi.themeColor")), "#5f8f55");
+  } finally {
+    s.close();
   }
 });
 

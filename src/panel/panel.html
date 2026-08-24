@@ -16,11 +16,31 @@
   <div class="sz-resize" data-role="resize" title="拖拽调整大小 · 双击恢复默认"><svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 9 9 1M4 9 9 4M7 9 9 7" stroke="#d1d5db" stroke-width="1.2" stroke-linecap="round"/></svg></div>
   <div class="sz-head">
     <span class="sz-title">拾知</span>
-    <span class="sz-mode">工作模式</span>
-    <input type="checkbox" class="sz-switch" data-role="workmode" aria-label="切换工作模式">
+    <div class="sz-mode-switch" role="group" aria-label="浏览模式">
+      <button class="sz-mode-option" data-act="panel-mode" data-mode="work" aria-pressed="true">工作模式</button>
+      <button class="sz-mode-option" data-act="panel-mode" data-mode="slacking" aria-pressed="false">摸鱼模式</button>
+    </div>
     <div class="sz-export-wrap">
       <button class="sz-ibtn" data-act="export" title="导出记录">{{download}}</button>
       <div class="sz-pop" data-role="export-pop" style="display:none"></div>
+    </div>
+    <div class="sz-theme-color-wrap">
+      <button class="sz-theme-color-btn" data-act="theme-color" title="更改主题色" aria-label="更改主题色">{{palette}}</button>
+      <div class="sz-theme-color-pop" data-role="theme-color-pop" aria-label="主题色选择">
+        <div class="sz-theme-color-head"><strong>主题色</strong><span data-role="theme-color-label">抹茶绿</span></div>
+        <div class="sz-theme-color-swatches">
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#5f8f55" style="--swatch:#5f8f55" title="抹茶绿"></button>
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#3b82f6" style="--swatch:#3b82f6" title="晴空蓝"></button>
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#8b5cf6" style="--swatch:#8b5cf6" title="雾紫"></button>
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#e76f51" style="--swatch:#e76f51" title="珊瑚橙"></button>
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#d97706" style="--swatch:#d97706" title="暖琥珀"></button>
+          <button class="sz-theme-swatch" data-act="set-theme-color" data-color="#64748b" style="--swatch:#64748b" title="石墨灰"></button>
+          <label class="sz-theme-swatch sz-theme-custom" title="自定义颜色">
+            <input type="color" data-role="theme-color-input" value="#5f8f55" aria-label="自定义主题色">
+          </label>
+        </div>
+        <div class="sz-theme-color-foot"><span data-role="theme-color-hex">#5F8F55</span><button class="sz-theme-reset" data-act="reset-theme-color">恢复默认</button></div>
+      </div>
     </div>
     <button class="sz-theme-btn" data-act="theme" title="切换主题"></button>
     <button class="sz-ibtn" data-act="close" title="关闭">{{close}}</button>
