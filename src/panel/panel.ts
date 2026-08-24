@@ -25,6 +25,15 @@ import type {BrowseRecord, Goal, MatchEntry, Profile, QueueItem, Settings, Searc
 // 设置面板使用的预设提示词（与 core/prompt.ts 中的 PRESET_ANALYSIS_PROMPT 保持一致）
 const PRESET_PROMPT = PRESET_ANALYSIS_PROMPT;
 const APP_VERSION = "0.1.0";
+const DEFAULT_THEME_COLOR = "#5f8f55";
+const THEME_COLORS: Record<string, { name: string; light: string; dark: string; soft: string; darkSoft: string; hover: string; darkHover: string; badge: string; darkBadge: string }> = {
+  "#5f8f55": { name: "抹茶绿", light: "#5f8f55", dark: "#76a86c", soft: "#c8ddc2", darkSoft: "#31502f", hover: "#eef4ec", darkHover: "#2b382d", badge: "#e4f0e1", darkBadge: "#203422" },
+  "#3b82f6": { name: "晴空蓝", light: "#3b82f6", dark: "#6ea8fe", soft: "#bfdbfe", darkSoft: "#244a7a", hover: "#eff6ff", darkHover: "#27364a", badge: "#dbeafe", darkBadge: "#1e3048" },
+  "#8b5cf6": { name: "雾紫", light: "#8b5cf6", dark: "#b18cff", soft: "#ddd6fe", darkSoft: "#49327c", hover: "#f5f3ff", darkHover: "#332b45", badge: "#ede9fe", darkBadge: "#34234f" },
+  "#e76f51": { name: "珊瑚橙", light: "#e76f51", dark: "#ff9277", soft: "#fed0c6", darkSoft: "#7c3b2d", hover: "#fff3f0", darkHover: "#482d29", badge: "#ffe4de", darkBadge: "#4a2822" },
+  "#d97706": { name: "暖琥珀", light: "#d97706", dark: "#f5a623", soft: "#fed7aa", darkSoft: "#754b13", hover: "#fff8ed", darkHover: "#493722", badge: "#ffedd5", darkBadge: "#4b3216" },
+  "#64748b": { name: "石墨灰", light: "#64748b", dark: "#aab6c6", soft: "#cbd5e1", darkSoft: "#4a5565", hover: "#f1f5f9", darkHover: "#303740", badge: "#e2e8f0", darkBadge: "#29313b" },
+};
 const GOAL_COLORS = ["#9ca3af", "#fb7185", "#fb923c", "#fbbf24", "#4ade80", "#60a5fa", "#c084fc"] as const;
 const DEFAULT_GOAL_COLOR = "#4ade80";
 
@@ -85,6 +94,7 @@ const ICONS = {
   globe: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></svg>',
   ext: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>',
+  palette: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18h1.2a1.8 1.8 0 0 0 1.2-3.1 1.8 1.8 0 0 1 1.2-3.1H18A3 3 0 0 0 21 12a9 9 0 0 0-9-9Z"/><circle cx="7.5" cy="11" r=".8" fill="currentColor"/><circle cx="9.5" cy="7.5" r=".8" fill="currentColor"/><circle cx="14" cy="7" r=".8" fill="currentColor"/><circle cx="17" cy="10" r=".8" fill="currentColor"/></svg>',
 };
 
 // 当前聚焦的宿主页面输入框（用于输入自动补全）
@@ -260,6 +270,7 @@ export const Panel = {
   aiDraft: null as null | { title: string; prompt: string; tasks: Task[]; questions: string[]; originalText: string }, // AI 拆解待确认结果
   todoOpen: false,
   exportOpen: false,
+  themeColorOpen: false,
   storageManagerOpen: false,
   drag: null as null | { kind: "goal" | "task" | "subtask"; id: string; parent: string },
   root: null as ShadowRoot | null,
@@ -280,7 +291,9 @@ export const Panel = {
     rectools: HTMLDivElement;
     sortBtn: HTMLButtonElement;
     searchInput: HTMLInputElement;
-    workmode: HTMLInputElement;
+    modeButtons: HTMLButtonElement[];
+    themeColorBtn: HTMLButtonElement;
+    themeColorPop: HTMLDivElement;
     todoPop: HTMLDivElement;
     ctxmenu: HTMLDivElement;
     autocomplete: HTMLDivElement;
@@ -298,6 +311,7 @@ export const Panel = {
       .replace(/\{\{bulb\}\}/g, ICONS.bulb)
       .replace(/\{\{close\}\}/g, ICONS.x)
       .replace(/\{\{download\}\}/g, ICONS.download)
+      .replace(/\{\{palette\}\}/g, ICONS.palette)
       .replace(/\{\{sparkle\}\}/g, ICONS.sparkle)}`;
     document.documentElement.appendChild(host);
     this.root = shadow;
@@ -313,7 +327,9 @@ export const Panel = {
       rectools: shadow.querySelector(".sz-rectools")!,
       sortBtn: shadow.querySelector('[data-act="rec-sort"]')!,
       searchInput: shadow.querySelector('[data-role="rec-search"]')!,
-      workmode: shadow.querySelector('[data-role="workmode"]')!,
+      modeButtons: Array.from(shadow.querySelectorAll('[data-act="panel-mode"]')),
+      themeColorBtn: shadow.querySelector('[data-act="theme-color"]')!,
+      themeColorPop: shadow.querySelector('[data-role="theme-color-pop"]')!,
       todoPop: shadow.querySelector('[data-role="todo-pop"]')!,
       ctxmenu: shadow.querySelector('[data-role="ctxmenu"]')!,
       autocomplete: shadow.querySelector('[data-role="autocomplete"]')!,
@@ -336,6 +352,7 @@ export const Panel = {
     this.initDrag();
     this.initResize();
     this.initTheme();
+    this.initThemeColor();
     this.recSort = Store.read<string>(K.recSort, "time") === "rel" ? "rel" : "time";
     shadow.addEventListener("click", (e) => this.onClick(e as MouseEvent));
     shadow.addEventListener("input", (e) => this.onInput(e as Event));
@@ -377,6 +394,10 @@ export const Panel = {
       if (this.colorGoalId && !target.closest('[data-role="goal-palette"]')) {
         this.colorGoalId = null;
         this.render();
+      }
+      if (this.themeColorOpen && !target.closest('[data-role="theme-color-pop"]')) {
+        this.themeColorOpen = false;
+        this.els.themeColorPop.classList.remove("open");
       }
       return;
     }
@@ -442,6 +463,13 @@ export const Panel = {
     else if (act === "toggle-rec-group") this.toggleRecGroup(btn.dataset.key!);
     else if (act === "del-record") this.askDelete("record", btn.dataset.key || "", undefined, "确定删除这条记录？此操作不可恢复。");
     else if (act === "theme") this.toggleTheme();
+    else if (act === "theme-color") {
+      this.themeColorOpen = !this.themeColorOpen;
+      this.els.themeColorPop.classList.toggle("open", this.themeColorOpen);
+    }
+    else if (act === "set-theme-color") this.setThemeColor(btn.dataset.color || DEFAULT_THEME_COLOR);
+    else if (act === "reset-theme-color") this.setThemeColor(DEFAULT_THEME_COLOR);
+    else if (act === "panel-mode") this.setPanelMode(btn.dataset.mode === "slacking" ? "slacking" : "work");
     else if (act === "storage-manage") this.openStorageManager();
     else if (act === "storage-close") this.closeStorageManager();
     else if (act === "storage-refresh") this.render();
@@ -472,19 +500,14 @@ export const Panel = {
   },
   onChange(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLSelectElement;
-    if (t.matches('[data-role="workmode"]')) {
-      const st = getState();
-      st.workMode = (t as HTMLInputElement).checked;
-      if ((t as HTMLInputElement).checked && !st.activeSince) st.activeSince = Date.now();
-      Store.write(K.state, st);
-      this.render();
-      if ((t as HTMLInputElement).checked) onLocationChange(); // 开启后立即评估当前页
-    } else if (t.matches('[data-role="linked-url"]')) {
+    if (t.matches('[data-role="linked-url"]')) {
       const v = (t as HTMLInputElement).value.trim();
       saveSettings({ linkedUrl: v });
       if (v) this.linkedUrlNotice(v);
     } else if (t.matches('[data-role="goal-color-input"]')) {
       this.setGoalColor(t.dataset.id || "", (t as HTMLInputElement).value);
+    } else if (t.matches('[data-role="theme-color-input"]')) {
+      this.setThemeColor((t as HTMLInputElement).value);
     }
   },
   onKeydown(e: KeyboardEvent): void {
@@ -1343,6 +1366,18 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.render();
   },
 
+  setPanelMode(mode: "work" | "slacking"): void {
+    const st = getState();
+    st.panelMode = mode;
+    if (!st.activeSince) st.activeSince = Date.now();
+    Store.write(K.state, st);
+    this.recGroup = null;
+    this.recReturnTab = null;
+    this.recQuery = "";
+    this.els.searchInput.value = "";
+    this.render();
+  },
+
   openStorageManager(): void {
     this.storageManagerOpen = true;
     this.render();
@@ -1460,7 +1495,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   render(): void {
     if (!this.root) return;
     const st = getState();
-    this.els.workmode.checked = !!st.workMode;
+    const panelMode = st.panelMode === "slacking" ? "slacking" : "work";
+    this.els.modeButtons.forEach((button) => {
+      const active = button.dataset.mode === panelMode;
+      button.classList.toggle("act", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
     this.els.fab.classList.toggle("on", !!st.workMode);
     this.els.pending.classList.toggle("on", Store.read<QueueItem[]>(K.queue, []).length > 0);
     this.els.tabs.forEach((t) => t.classList.toggle("act", t.dataset.tab === this.tab));
@@ -1510,6 +1550,19 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   },
   renderGoals(): void {
     const goals = Store.read<Goal[]>(K.goals, []);
+    const slackingOnly = getState().panelMode === "slacking";
+    const slackingNode = `<div class="sz-node" style="opacity:.95">
+      <div class="sz-row" style="cursor:default">
+        <span class="sz-grip" style="opacity:0">${ICONS.drag}</span>
+        <span class="sz-caret-spacer"></span>
+        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">摸鱼</span>
+      </div>
+      <div class="sz-prompt sz-prompt-fixed" title="固定分类定义">不属于任何其它目标的记录</div>
+    </div>`;
+    if (slackingOnly) {
+      this.els.body.innerHTML = slackingNode;
+      return;
+    }
 
     // 分类提示词（分类定义）：内联编辑面板
     const promptEditor = (kind: "goal" | "task" | "subtask", id: string, prompt: string): string =>
@@ -1624,14 +1677,7 @@ this.els.body.innerHTML = `
     ${this.renderAiDraft()}
     ${goals.length ? '<div class="sz-note sz-priority-note" style="margin-bottom:8px">拖动排序，待办优先提示靠前任务。<span>—— P0！全都是P0！</span></div>' : ""}
     ${goals.map(goalRow).join("") || '<div class="sz-empty">暂无目标。添加目标后，拾知会自动归档浏览记录。</div>'}
-    <div class="sz-node" style="opacity:.95">
-      <div class="sz-row" style="cursor:default">
-        <span class="sz-grip" style="opacity:0">${ICONS.drag}</span>
-        <span class="sz-caret-spacer"></span>
-        <span class="sz-ntitle clickable" data-act="goto-rec" data-id="slacking" data-kind="slacking" title="点击查看摸鱼记录">摸鱼</span>
-      </div>
-      <div class="sz-prompt sz-prompt-fixed" title="固定分类定义">不属于任何其它目标的记录</div>
-    </div>`;
+    ${slackingNode}`;
   },
   // AI 拆解结果确认卡片（可编辑后创建）
   renderAiDraft(): string {
@@ -1675,6 +1721,7 @@ this.els.body.innerHTML = `
   renderRecords(): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const goals = Store.read<Goal[]>(K.goals, []);
+    const slackingOnly = getState().panelMode === "slacking";
     type RecItem = { record: BrowseRecord; match?: MatchEntry };
     const groups: { key: string; name: string; color: string; items: RecItem[] }[] = goals.map((g) => ({
       key: "goal:" + g.id, name: g.title,
@@ -1829,7 +1876,7 @@ this.els.body.innerHTML = `
 
     // 总览：按时间倒序，分组可折叠，点击组标题进入组内视图
     let html = "";
-    for (const g of groups) {
+    for (const g of (slackingOnly ? groups.filter((group) => group.key === "slacking") : groups)) {
       if (!g.items.length) continue;
       const collapsed = this.recCollapsed.has(g.key);
       html += `<div class="sz-sec sz-sec-link">
@@ -2048,9 +2095,48 @@ this.els.body.innerHTML = `
     const dark = Store.read<string>(K.theme, "light") === "dark";
     this.applyTheme(dark);
   },
+  initThemeColor(): void {
+    this.applyThemeColor(Store.read<string>(K.themeColor, DEFAULT_THEME_COLOR));
+  },
+  setThemeColor(value: string): void {
+    const color = /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : DEFAULT_THEME_COLOR;
+    Store.write(K.themeColor, color);
+    this.applyThemeColor(color);
+    this.themeColorOpen = false;
+    this.els.themeColorPop.classList.remove("open");
+  },
+  applyThemeColor(value: string): void {
+    const color = /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : DEFAULT_THEME_COLOR;
+    const preset = THEME_COLORS[color];
+    const dark = this.els.dock.classList.contains("dark");
+    const accent = preset ? (dark ? preset.dark : preset.light) : color;
+    const soft = preset ? (dark ? preset.darkSoft : preset.soft) : `color-mix(in srgb, ${color} 32%, ${dark ? "#1a1b1e" : "#ffffff"})`;
+    const hover = preset ? (dark ? preset.darkHover : preset.hover) : `color-mix(in srgb, ${color} 8%, ${dark ? "#1a1b1e" : "#ffffff"})`;
+    const badge = preset ? (dark ? preset.darkBadge : preset.badge) : `color-mix(in srgb, ${color} 16%, ${dark ? "#1a1b1e" : "#ffffff"})`;
+    this.els.dock.style.setProperty("--accent", accent);
+    this.els.dock.style.setProperty("--accent-soft", soft);
+    this.els.dock.style.setProperty("--bg-hover", hover);
+    this.els.dock.style.setProperty("--bg-tab-act", hover);
+    this.els.dock.style.setProperty("--bg-badge-on", badge);
+    this.els.dock.style.setProperty("--fab-color", accent);
+    this.updateThemeColorPalette(color, preset?.name || "自定义");
+  },
+  updateThemeColorPalette(color: string, name?: string): void {
+    if (!this.root) return;
+    this.root.querySelectorAll<HTMLButtonElement>(".sz-theme-swatch[data-color]").forEach((button) => {
+      button.classList.toggle("selected", button.dataset.color?.toLowerCase() === color.toLowerCase());
+    });
+    const input = this.root.querySelector('[data-role="theme-color-input"]') as HTMLInputElement | null;
+    if (input) input.value = color;
+    const label = this.root.querySelector('[data-role="theme-color-label"]');
+    if (label) label.textContent = name || "自定义";
+    const hex = this.root.querySelector('[data-role="theme-color-hex"]');
+    if (hex) hex.textContent = color.toUpperCase();
+  },
   applyTheme(dark: boolean): void {
     this.els.dock.classList.toggle("dark", dark);
     this.els.themeBtn.innerHTML = dark ? ICONS.sun : ICONS.moon;
+    this.applyThemeColor(Store.read<string>(K.themeColor, DEFAULT_THEME_COLOR));
   },
   toggleTheme(): void {
     const dark = !this.els.dock.classList.contains("dark");

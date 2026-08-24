@@ -112,6 +112,7 @@ export interface Profile {
 export interface WorkState {
   workMode: boolean;
   activeSince: number;
+  panelMode?: "work" | "slacking";
 }
 
 export interface PageData {
