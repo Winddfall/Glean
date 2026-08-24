@@ -44,8 +44,8 @@ export async function updateProfileFromWorkRecords(): Promise<ProfileUpdateResul
   if (!facts.length && !preferences.length) throw new Error("AI 未产出有效画像");
 
   const profile = Store.read<Profile>(K.profile, { updatedAt: 0, facts: [], preferences: [] });
-  profile.facts = Array.from(new Set([...(profile.facts || []), ...facts])).slice(0, 20);
-  profile.preferences = Array.from(new Set([...(profile.preferences || []), ...preferences])).slice(0, 20);
+  profile.facts = Array.from(new Set([...facts, ...(profile.facts || [])])).slice(0, 20);
+  profile.preferences = Array.from(new Set([...preferences, ...(profile.preferences || [])])).slice(0, 20);
   profile.updatedAt = Date.now();
   Store.write(K.profile, profile);
 
