@@ -1874,7 +1874,11 @@ this.els.body.innerHTML = `
     </div>
     ${has
       ? `${profile.facts.length ? `<div class="sz-sec">关于你</div>${list(profile.facts, "facts")}` : ""}${profile.preferences.length ? `<div class="sz-sec">偏好</div>${list(profile.preferences, "preferences")}` : ""}`
-      : ""}`;
+      : `<div class="sz-profile-empty">
+          <div class="sz-profile-empty-icon">${ICONS.sparkle}</div>
+          <div class="sz-profile-empty-title">还没有用户画像</div>
+          <div class="sz-profile-empty-desc">拾知会从你的工作浏览记录中了解你的关注方向和偏好。<br>每浏览 <strong>5</strong> 个工作网页，画像会自动更新。</div>
+        </div>`}`;
   },
   renderSettings(): void {
     const s = settings();

@@ -91,6 +91,11 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
     s.shadow.querySelector(".sz-expand").click();
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("💡 关键发现"), "展开后显示关键发现");
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("关键发现测试"), "展开后显示匹配到该分类的发现");
+    s.shadow.querySelector('[data-tab="profile"]').click();
+    const emptyProfile = s.shadow.querySelector(".sz-profile-empty");
+    assert.ok(emptyProfile, "没有画像条目时显示画像功能说明");
+    assert.ok(emptyProfile.textContent.includes("还没有用户画像"));
+    assert.ok(emptyProfile.textContent.includes("每浏览 5 个工作网页，画像会自动更新"));
   } finally {
     s.close();
   }
@@ -121,6 +126,7 @@ test("画像自动更新：每第 5 个工作网页触发并移除手动生成�
     assert.deepStrictEqual(profile.preferences, ["偏好通过教程系统学习"]);
 
     s.shadow.querySelector('[data-tab="profile"]').click();
+    assert.strictEqual(s.shadow.querySelector(".sz-profile-empty"), null, "已有画像时隐藏空状态说明");
     assert.strictEqual(s.shadow.querySelector('[data-act="ai-profile"]'), null, "画像页不再显示手动 AI 生成按钮");
     assert.ok(!s.shadow.querySelector(".sz-body").textContent.includes("根据记录 AI 生成"));
   } finally {
