@@ -16,7 +16,7 @@ const PAGE_URL = "https://liaoxuefeng.com/books/python/introduction/index.html";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function bootScenario({ goalTitle, llmResult }) {
+async function bootScenario({ goalTitle, llmResult, profileWorkPageCount = 0, profileResult }) {
   const dom = new JSDOM(HTML, {
     url: PAGE_URL,
     runScripts: "outside-only",
@@ -31,10 +31,14 @@ async function bootScenario({ goalTitle, llmResult }) {
   window.localStorage.setItem("shizhi.goals", JSON.stringify([
     { id: "g_py", title: goalTitle, status: "active", createdAt: Date.now(), todos: [] },
   ]));
+  if (profileWorkPageCount > 0) {
+    window.localStorage.setItem("shizhi.profileWorkPageCount", JSON.stringify(profileWorkPageCount));
+  }
   const calls = [];
   window.LLMBridge = {
     async chat(prompt) {
       calls.push(prompt);
+      if (prompt.includes("归纳用户的画像")) return JSON.stringify(profileResult || { facts: [], preferences: [] });
       return JSON.stringify(llmResult);
     },
   };
@@ -87,6 +91,44 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
     s.shadow.querySelector(".sz-expand").click();
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("💡 关键发现"), "展开后显示关键发现");
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("关键发现测试"), "展开后显示匹配到该分类的发现");
+    s.shadow.querySelector('[data-tab="profile"]').click();
+    const emptyProfile = s.shadow.querySelector(".sz-profile-empty");
+    assert.ok(emptyProfile, "没有画像条目时显示画像功能说明");
+    assert.ok(emptyProfile.textContent.includes("还没有用户画像"));
+    assert.ok(emptyProfile.textContent.includes("每浏览 5 个工作网页，画像会自动更新"));
+  } finally {
+    s.close();
+  }
+});
+
+test("画像自动更新：每第 5 个工作网页触发并移除手动生成按钮", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    profileWorkPageCount: 4,
+    llmResult: {
+      relevant: true,
+      goalId: "g_py",
+      summary: "Python 教程导言，介绍语言定位与特点",
+      keywords: ["Python", "编程"],
+      matches: [{ goalId: "g_py", relevance: 95, reasoning: "与学习目标相关", findings: [] }],
+    },
+    profileResult: {
+      facts: ["正在学习 Python 编程"],
+      preferences: ["偏好通过教程系统学习"],
+    },
+  });
+  try {
+    assert.strictEqual(s.calls.length, 2, "第 5 个工作网页应额外调用一次 AI 更新画像");
+    assert.ok(s.calls[1].includes("工作网页浏览记录摘要"), "第二次调用使用工作记录生成画像");
+    assert.strictEqual(JSON.parse(s.window.localStorage.getItem("shizhi.profileWorkPageCount")), 5);
+    const profile = JSON.parse(s.window.localStorage.getItem("shizhi.profile") || "{}");
+    assert.deepStrictEqual(profile.facts, ["正在学习 Python 编程"]);
+    assert.deepStrictEqual(profile.preferences, ["偏好通过教程系统学习"]);
+
+    s.shadow.querySelector('[data-tab="profile"]').click();
+    assert.strictEqual(s.shadow.querySelector(".sz-profile-empty"), null, "已有画像时隐藏空状态说明");
+    assert.strictEqual(s.shadow.querySelector('[data-act="ai-profile"]'), null, "画像页不再显示手动 AI 生成按钮");
+    assert.ok(!s.shadow.querySelector(".sz-body").textContent.includes("根据记录 AI 生成"));
   } finally {
     s.close();
   }
@@ -100,6 +142,7 @@ test("F1 摸鱼路径：无关网页归入摸鱼分类", async () => {
   try {
     assert.strictEqual(s.records.length, 1);
     assert.strictEqual(s.records[0].category, "slacking");
+    assert.strictEqual(s.window.localStorage.getItem("shizhi.profileWorkPageCount"), null, "摸鱼网页不计入画像更新阈值");
     const toast = s.shadow.querySelector(".sz-toast");
     assert.ok(toast.textContent.includes("已归入摸鱼"));
     assert.ok(toast.className.includes("idle"));

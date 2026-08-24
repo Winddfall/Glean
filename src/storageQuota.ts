@@ -39,7 +39,7 @@ export interface StorageLike {
 const CATEGORY_KEYS: Record<Exclude<StorageCategoryId, "other">, readonly string[]> = {
   goals: [K.goals],
   records: [K.records],
-  profile: [K.profile],
+  profile: [K.profile, K.profileWorkPageCount],
   queue: [K.queue],
   settings: [K.settings, K.state, STORAGE_SOFT_CAP_KEY],
   ui: [K.theme, K.recSort, K.fabPos, K.panelSize],

@@ -488,7 +488,6 @@ export const Panel = {
       const id = kind + ":" + (btn.dataset.idx || "0");
       this.askDelete("profile", id, undefined, "删除这条画像信息？");
     }
-    else if (act === "ai-profile") this.generateProfileWithAI();
     else if (act === "ac-complete") this.completeInput();
     else if (act === "send-ai") this.sendSelectionToAI("analyze");
     else if (act === "send-ai-summary") this.sendSelectionToAI("summary");
@@ -1135,41 +1134,6 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     profile.updatedAt = Date.now();
     Store.write(K.profile, profile);
     this.renderProfile();
-  },
-  async generateProfileWithAI(): Promise<void> {
-    const bridge = window.LLMBridge;
-    if (!bridge) {
-      this.toast("AI 暂不可用（未检测到 LLMBridge）。可手动添加画像条目。", "err");
-      return;
-    }
-    const recs = Store.read<BrowseRecord[]>(K.records, []).filter((r) => r.summary && r.category.startsWith("goal:"));
-    if (!recs.length) {
-      this.toast("暂无已归档的记录，无法生成画像。", "idle");
-      return;
-    }
-    this.toast("AI 正在归纳用户画像…", "idle");
-    try {
-      const sample = recs.slice(0, 20).map((r) => r.summary).join("\n---\n");
-      const raw = await bridge.chat(
-        "根据以下浏览记录摘要，归纳用户的画像。输出 JSON（不要输出其他内容）：" +
-        '{"facts":["关于用户的事实", "..."],"preferences":["用户的偏好", "..."]}' +
-        "规则：facts 和 preferences 各 1-5 条，每条一句话、具体、避免空泛。\n\n" + sample.slice(0, 4000),
-        "json"
-      );
-      const obj = JSON.parse(raw);
-      const facts = (Array.isArray(obj.facts) ? obj.facts : []).slice(0, 8).map((x: unknown) => String(x).trim()).filter(Boolean);
-      const preferences = (Array.isArray(obj.preferences) ? obj.preferences : []).slice(0, 8).map((x: unknown) => String(x).trim()).filter(Boolean);
-      if (!facts.length && !preferences.length) { this.toast("AI 未产出有效画像，请稍后重试。", "idle"); return; }
-      const profile = Store.read<Profile>(K.profile, { updatedAt: 0, facts: [], preferences: [] });
-      profile.facts = Array.from(new Set([...(profile.facts || []), ...facts])).slice(0, 20);
-      profile.preferences = Array.from(new Set([...(profile.preferences || []), ...preferences])).slice(0, 20);
-      profile.updatedAt = Date.now();
-      Store.write(K.profile, profile);
-      this.renderProfile();
-      this.toast("已生成画像：" + facts.length + " 条事实、" + preferences.length + " 条偏好", "ok");
-    } catch (err) {
-      this.toast("画像生成失败：" + String(err), "err");
-    }
   },
 
   // ---- 输入自动补全 ----
@@ -1907,13 +1871,14 @@ this.els.body.innerHTML = `
         <input class="sz-input" data-role="profile-input" placeholder="例如：偏好用 Python 写脚本" style="flex:1">
         <button class="sz-btn primary" data-act="add-profile">添加</button>
       </div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="sz-btn" data-act="ai-profile" title="根据已归档的记录，让 AI 归纳用户画像">${ICONS.bulb} 根据记录 AI 生成</button>
-      </div>
     </div>
     ${has
       ? `${profile.facts.length ? `<div class="sz-sec">关于你</div>${list(profile.facts, "facts")}` : ""}${profile.preferences.length ? `<div class="sz-sec">偏好</div>${list(profile.preferences, "preferences")}` : ""}`
-      : ""}`;
+      : `<div class="sz-profile-empty">
+          <div class="sz-profile-empty-icon">${ICONS.sparkle}</div>
+          <div class="sz-profile-empty-title">还没有用户画像</div>
+          <div class="sz-profile-empty-desc">拾知会从你的工作浏览记录中了解你的关注方向和偏好。<br>每浏览 <strong>5</strong> 个工作网页，画像会自动更新。</div>
+        </div>`}`;
   },
   renderSettings(): void {
     const s = settings();
