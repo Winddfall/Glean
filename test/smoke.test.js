@@ -291,3 +291,68 @@ test("存储空间：仅统计拾知同源数据，可设置软上限并查看�
     s.close();
   }
 });
+
+test("右键「问问 DeepSeek Harness」：选中内容经 URL hash 送往 dsh 输入框", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: { relevant: false, goalId: null, summary: "Python 教程导言", keywords: [], matches: [] },
+  });
+  try {
+    // 1. 页面选中文字后右键，菜单出现第三项「问问 DeepSeek Harness」
+    const hostBody = s.document.body;
+    const para = hostBody.querySelector("h1, h2, p") || hostBody;
+    const range = s.document.createRange();
+    range.selectNodeContents(para);
+    const selection = s.window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const menuEvt = new s.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 100, clientY: 100 });
+    s.document.dispatchEvent(menuEvt);
+    const menu = s.shadow.querySelector('[data-role="ctxmenu"]');
+    assert.ok(menu.classList.contains("open"), "右键后弹出菜单");
+    const dshBtn = menu.querySelector('[data-act="ask-dsh"]');
+    assert.ok(dshBtn, "菜单包含「问问 DeepSeek Harness」项");
+
+    // 2. 点击后经 window.open 打开 dsh 并带 hash 载荷
+    let opened = null;
+    s.window.open = (url, name) => { opened = { url, name }; return null; };
+    dshBtn.click();
+    assert.ok(opened, "调用了 window.open");
+    assert.strictEqual(opened.name, "shizhi-dsh", "复用固定标签页名");
+    assert.ok(opened.url.startsWith("http://127.0.0.1:3080/#sz-dsh-ask="), "URL 指向 dsh 且带标记 hash");
+    const payload = JSON.parse(decodeURIComponent(opened.url.split("#sz-dsh-ask=")[1]));
+    assert.ok(typeof payload.text === "string" && payload.text.length > 0, "载荷含指令+选中内容");
+    assert.ok(payload.text.includes("请分析以下网页选中内容"), "消息包含指令模板");
+    assert.ok(payload.text.includes("https://liaoxuefeng.com"), "消息包含来源链接");
+  } finally {
+    s.close();
+  }
+});
+
+test("dsh 接收器：hash 中的消息被填入输入框且 hash 清理干净", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: { relevant: false, goalId: null, summary: "Python 教程导言", keywords: [], matches: [] },
+  });
+  try {
+    // 模拟 dsh 页面：放入一个 React 受控 textarea + 带 hash 的地址
+    const ta = s.document.createElement("textarea");
+    ta.placeholder = "描述你想要构建的内容";
+    s.document.body.appendChild(ta);
+    const message = "请分析以下网页选中内容：\n\n测试段落\n\n（来源：测试页\nhttps://example.com）";
+    const hash = "#sz-dsh-ask=" + encodeURIComponent(JSON.stringify({ text: message, ts: Date.now() }));
+    // jsdom 允许直接改 hash 并派发 hashchange
+    s.window.location.hash = hash;
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(ta.value, message, "消息被完整填入 textarea");
+    assert.ok(!s.window.location.hash.includes("sz-dsh-ask"), "hash 已被清理");
+
+    // 非法载荷不应抛错也不应填入
+    s.window.location.hash = "#sz-dsh-ask=not-json";
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(ta.value, message, "非法载荷不覆盖已有内容");
+    assert.ok(!s.window.location.hash.includes("sz-dsh-ask"), "非法载荷的 hash 同样被清理");
+  } finally {
+    s.close();
+  }
+});

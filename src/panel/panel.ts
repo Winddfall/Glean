@@ -6,6 +6,7 @@ import panelHtml from "./panel.html";
 import fabLogoUrl from "./fab-logo.jpg";
 import {K} from "../core/constants.js";
 import {clamp, esc, uid, normalizeSearchTerm, enrichSearchTerm} from "../core/utils.js";
+import {askDsh, composeDshAsk} from "../dsh.js";
 import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
@@ -492,8 +493,9 @@ export const Panel = {
       this.askDelete("profile", id, undefined, "删除这条画像信息？");
     }
     else if (act === "ac-complete") this.completeInput();
-    else if (act === "send-ai") this.sendSelectionToAI("analyze");
-    else if (act === "send-ai-summary") this.sendSelectionToAI("summary");
+else if (act === "send-ai") this.sendSelectionToAI("analyze");
+else if (act === "send-ai-summary") this.sendSelectionToAI("summary");
+else if (act === "ask-dsh") this.askSelectionToDsh();
   },
   onInput(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLTextAreaElement;
@@ -1211,7 +1213,8 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const m = this.els.ctxmenu;
     m.innerHTML = `
       <button class="sz-ctxmenu-item" data-act="send-ai">${ICONS.bulb} 塞给 AI 分析（${sel.length} 字）</button>
-      <button class="sz-ctxmenu-item" data-act="send-ai-summary">${ICONS.copy} AI 摘要选中内容</button>`;
+      <button class="sz-ctxmenu-item" data-act="send-ai-summary">${ICONS.copy} AI 摘要选中内容</button>
+      <button class="sz-ctxmenu-item" data-act="ask-dsh">${ICONS.globe} 问问 DeepSeek Harness</button>`;
     m.classList.add("open");
     m.style.left = e.clientX + "px";
     m.style.top = e.clientY + "px";
@@ -1245,6 +1248,13 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     } catch (err) {
       this.toast("分析失败：" + String(err), "err");
     }
+  },
+  askSelectionToDsh(): void {
+    const sel = window.getSelection()?.toString().trim() || "";
+    if (!sel) { this.hideCtxMenu(); return; }
+    this.hideCtxMenu();
+    askDsh(composeDshAsk(sel, document.title, location.href));
+    this.toast("已打开 DeepSeek Harness 并填入选中内容，确认后可直接发送。", "ok");
   },
 
   // ---- 目标树拖拽排序 ----

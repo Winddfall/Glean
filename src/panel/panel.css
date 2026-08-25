@@ -233,9 +233,10 @@
 .sz-term-copy:hover { color: var(--accent); }
 
 /* ---- 右键「塞给 AI」/ 输入自动补全 ---- */
-.sz-ctxmenu { position: fixed; z-index: 2147483002; min-width: 140px; background: var(--bg-panel); border: 1px solid var(--bd-panel); border-radius: 6px; box-shadow: var(--shadow-panel); padding: 4px; display: none; font-size: 13px; }
+.sz-ctxmenu { position: fixed; z-index: 2147483002; min-width: 140px; background: var(--bg-panel); border: 1px solid var(--bd-panel); border-radius: 6px; box-shadow: var(--shadow-panel); padding: 6px; display: none; font-size: 13px; }
 .sz-ctxmenu.open { display: block; }
-.sz-ctxmenu-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; font-size: 13px; color: var(--tx-primary); cursor: pointer; border-radius: 4px; }
+.sz-ctxmenu-item { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: var(--bg-badge); border: none; padding: 7px 10px; font-size: 13px; color: var(--tx-primary); cursor: pointer; border-radius: 6px; }
+.sz-ctxmenu-item:not(:last-child) { margin-bottom: 4px; }
 .sz-ctxmenu-item:hover { background: var(--bg-hover); }
 .sz-autocomplete { position: fixed; z-index: 2147483001; display: none; }
 .sz-autocomplete.open { display: block; }
