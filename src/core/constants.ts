@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   excludedSites: [],     // 子串匹配 URL，命中不记录
   linkedUrl: "",         // 关联网址
   analysisPrompt: "",    // 分析提示词（空 = 预设）
+  askDsh: true,          // 右键「问问 DeepSeek Harness」默认开启
 };
 
 // DeepSeek Harness（dsh）本地服务：右键「问问 DeepSeek Harness」跳转目标
