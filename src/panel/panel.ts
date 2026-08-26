@@ -6,6 +6,7 @@ import panelHtml from "./panel.html";
 import fabLogoUrl from "./fab-logo.jpg";
 import {K} from "../core/constants.js";
 import {clamp, esc, uid, normalizeSearchTerm, enrichSearchTerm} from "../core/utils.js";
+import {askDsh, composeDshAsk} from "../dsh.js";
 import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
@@ -360,7 +361,7 @@ export const Panel = {
     shadow.addEventListener("change", (e) => this.onChange(e as Event));
     shadow.addEventListener("keydown", (e) => this.onKeydown(e as KeyboardEvent));
 
-    // 右键「塞给 AI」：在宿主页面选中文字后右键弹出
+    // 右键「问问 DeepSeek Harness」：在宿主页面选中文字后右键弹出
     document.addEventListener("contextmenu", (e) => this.onContextMenu(e as MouseEvent));
     document.addEventListener("click", (e) => {
       if (this.els.ctxmenu && this.els.ctxmenu.classList.contains("open")) this.hideCtxMenu();
@@ -492,8 +493,8 @@ export const Panel = {
       this.askDelete("profile", id, undefined, "删除这条画像信息？");
     }
     else if (act === "ac-complete") this.completeInput();
-    else if (act === "send-ai") this.sendSelectionToAI("analyze");
-    else if (act === "send-ai-summary") this.sendSelectionToAI("summary");
+    else if (act === "ask-dsh") this.askSelectionToDsh();
+    else if (act === "toggle-ask-dsh") { saveSettings({ askDsh: !settings().askDsh }); this.renderSettings(); }
   },
   onInput(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLTextAreaElement;
@@ -1201,8 +1202,9 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     }
   },
 
-  // ---- 右键「塞给 AI」 ----
+  // ---- 右键「问问 DeepSeek Harness」 ----
   onContextMenu(e: MouseEvent): void {
+    if (!settings().askDsh) { this.hideCtxMenu(); return; }
     const sel = window.getSelection()?.toString().trim() || "";
     if (!sel) { this.hideCtxMenu(); return; }
     // 在拾知面板内部右键时不拦截（保留面板自身交互）
@@ -1210,8 +1212,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     e.preventDefault();
     const m = this.els.ctxmenu;
     m.innerHTML = `
-      <button class="sz-ctxmenu-item" data-act="send-ai">${ICONS.bulb} 塞给 AI 分析（${sel.length} 字）</button>
-      <button class="sz-ctxmenu-item" data-act="send-ai-summary">${ICONS.copy} AI 摘要选中内容</button>`;
+      <button class="sz-ctxmenu-item" data-act="ask-dsh">${ICONS.fish} 问问 DeepSeek Harness</button>`;
     m.classList.add("open");
     m.style.left = e.clientX + "px";
     m.style.top = e.clientY + "px";
@@ -1219,32 +1220,12 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   hideCtxMenu(): void {
     this.els.ctxmenu.classList.remove("open");
   },
-  async sendSelectionToAI(mode: "analyze" | "summary"): Promise<void> {
+  askSelectionToDsh(): void {
     const sel = window.getSelection()?.toString().trim() || "";
     if (!sel) { this.hideCtxMenu(); return; }
     this.hideCtxMenu();
-    const bridge = window.LLMBridge;
-    if (!bridge) {
-      this.toast("AI 暂不可用（未检测到 LLMBridge）。请确认在 Tabbit 环境中运行。", "err");
-      return;
-    }
-    const prompt = mode === "summary"
-      ? "请用不超过 3 句话概括以下网页选中内容，提炼核心信息：\n\n" + sel
-      : "请分析以下网页选中内容，指出它与哪些工作目标/任务可能相关，给出 1-2 句判断：\n\n" + sel;
-    this.toast("AI 正在分析选中内容…", "idle");
-    try {
-      const raw = await bridge.chat(prompt, "json");
-      let text = raw;
-      try {
-        const obj = JSON.parse(raw);
-        if (typeof obj === "object" && obj !== null) {
-          text = (obj.summary || obj.analysis || obj.result || raw).toString();
-        }
-      } catch { /* 非 JSON 直接展示 */ }
-      this.toast(text.slice(0, 280), "ok");
-    } catch (err) {
-      this.toast("分析失败：" + String(err), "err");
-    }
+    askDsh(composeDshAsk(sel, document.title, location.href));
+    this.toast("已打开 DeepSeek Harness 并填入选中内容，确认后可直接发送。", "ok");
   },
 
   // ---- 目标树拖拽排序 ----
@@ -1902,6 +1883,13 @@ this.els.body.innerHTML = `
     const activeClone = cloneTabs.find((t) => t.key === this.cloneTab) || cloneTabs[0];
     this.els.body.innerHTML = `
     ${this.renderStorageCard(storageSnapshot)}
+    <section class="sz-field sz-setting-card sz-switch-card">
+      <div class="sz-switch-text">
+        <span class="sz-switch-title">问问 DeepSeek Harness</span>
+        <span class="sz-switch-desc">选中网页文字后右键，把内容直接带进本地 DeepSeek Harness 继续提问。</span>
+      </div>
+      <button class="sz-switch ${s.askDsh ? "on" : ""}" data-act="toggle-ask-dsh" role="switch" aria-checked="${s.askDsh}" aria-label="问问 DeepSeek Harness"><span class="sz-switch-knob"></span></button>
+    </section>
     <section class="sz-field sz-setting-card">
       <span class="sz-label">记录分析提示词（留空则使用预设）</span>
       <textarea class="sz-textarea" data-role="prompt-input" placeholder="${esc(PRESET_PROMPT)}">${esc(promptVal)}</textarea>

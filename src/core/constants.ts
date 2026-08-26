@@ -27,4 +27,10 @@ export const DEFAULT_SETTINGS: Settings = {
   excludedSites: [],     // 子串匹配 URL，命中不记录
   linkedUrl: "",         // 关联网址
   analysisPrompt: "",    // 分析提示词（空 = 预设）
+  askDsh: true,          // 右键「问问 DeepSeek Harness」默认开启
 };
+
+// DeepSeek Harness（dsh）本地服务：右键「问问 DeepSeek Harness」跳转目标
+export const DSH_URL = "http://127.0.0.1:3080/";
+// 经 URL hash 向 dsh 页面传递选中内容的标记（hash 形如 #sz-dsh-ask=<payload>）
+export const DSH_ASK_HASH = "sz-dsh-ask";
