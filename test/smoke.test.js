@@ -89,6 +89,7 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
     assert.ok(!body.includes("Python 教程导言"), "摘要不再显示在记录里");
     assert.ok(s.shadow.querySelector(".sz-rtitle")?.textContent?.includes("Python"), "记录标题仍显示");
     s.shadow.querySelector(".sz-expand").click();
+    assert.ok(s.shadow.querySelector(".sz-rec")?.classList.contains("expanded"), "记录详情进入展开动效状态");
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("💡 关键发现"), "展开后显示关键发现");
     assert.ok(s.shadow.querySelector(".sz-body").innerHTML.includes("关键发现测试"), "展开后显示匹配到该分类的发现");
     s.shadow.querySelector('[data-tab="profile"]').click();
@@ -242,6 +243,33 @@ test("主题色：调色盘统一更新强调色与悬停色并持久化", async
     s.shadow.querySelector('[data-act="theme-color"]').click();
     s.shadow.querySelector('[data-act="reset-theme-color"]').click();
     assert.strictEqual(JSON.parse(s.window.localStorage.getItem("shizhi.themeColor")), "#5f8f55");
+  } finally {
+    s.close();
+  }
+});
+
+test("展开收起动效：目标和记录列表播放过渡动画", async () => {
+  const s = await bootScenario({
+    goalTitle: "学习 Python 编程",
+    llmResult: { relevant: false, goalId: null, summary: "摸鱼内容", keywords: [], matches: [] },
+  });
+  try {
+    const goalCaret = s.shadow.querySelector('[data-act="toggle-node"][data-id="g:g_py"]');
+    assert.ok(goalCaret, "目标显示展开按钮");
+    s.shadow.querySelector('[data-act="toggle-node"][data-id="g:g_py"]').click();
+    assert.ok(s.shadow.querySelector(".sz-children.sz-collapse-leave"), "目标收起时播放压缩动画");
+    await sleep(260);
+    assert.ok(s.shadow.querySelector('[data-act="toggle-node"][data-id="g:g_py"]'));
+    s.shadow.querySelector('[data-act="toggle-node"][data-id="g:g_py"]').click();
+    assert.ok(s.shadow.querySelector(".sz-children.sz-expand-enter"), "目标展开时播放淡入动画");
+
+    s.shadow.querySelector('[data-tab="records"]').click();
+    const recordCaret = s.shadow.querySelector('[data-act="toggle-rec-group"][data-key="slacking"]');
+    assert.ok(recordCaret, "记录分组显示展开按钮");
+    recordCaret.click();
+    assert.ok(s.shadow.querySelector(".sz-rec-list.sz-collapse-leave"), "记录收起时播放压缩动画");
+    await sleep(260);
+    assert.ok(!s.shadow.querySelector(".sz-rec-list.sz-collapse-leave"), "记录收起动画完成后移除列表");
   } finally {
     s.close();
   }

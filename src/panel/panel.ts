@@ -265,6 +265,8 @@ export const Panel = {
   recReturnTab: null as "goals" | null, // 从目标树进入记录分组时，返回目标标签页
   recCollapsed: new Set<string>(), // 记录标签页折叠的分组 key
   collapsed: new Set<string>(), // 折叠的分类节点（"g:{id}" | "t:{id}"）
+  expandAnimTimer: 0,
+  expandAnim: null as string | null,
   editingGoal: null as null | string, // 正在内联编辑的目标 id
   editingPrompt: null as null | string, // 正在编辑分类提示词的节点 id
   colorGoalId: null as null | string, // 正在选择标识色的目标 id
@@ -463,7 +465,7 @@ export const Panel = {
     }
     else if (act === "enter-group") this.enterGroup(btn.dataset.key!);
     else if (act === "leave-group") this.leaveGroup();
-    else if (act === "expand") { btn.closest(".sz-rec")!.classList.toggle("expanded"); }
+    else if (act === "expand") this.toggleRecordDetail(btn);
     else if (act === "toggle-rec-group") this.toggleRecGroup(btn.dataset.key!);
     else if (act === "del-record") this.askDelete("record", btn.dataset.key || "", undefined, "确定删除这条记录？此操作不可恢复。");
     else if (act === "theme") this.toggleTheme();
@@ -795,9 +797,47 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.render();
   },
   // 折叠/展开分类节点（key = "g:{id}" | "t:{id}"）
+  prefersReducedMotion(): boolean {
+    return !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  },
+  prepareCollapse(element: HTMLElement): void {
+    element.classList.remove("sz-expand-enter");
+    element.style.setProperty("--collapse-size", `${element.scrollHeight}px`);
+    element.classList.add("sz-collapse-leave");
+  },
+  prepareExpandAnimations(): void {
+    this.root?.querySelectorAll<HTMLElement>(".sz-expand-enter").forEach((element) => {
+      element.style.setProperty("--collapse-size", `${element.scrollHeight}px`);
+      const finish = (): void => {
+        element.classList.remove("sz-expand-enter");
+        element.style.removeProperty("--collapse-size");
+      };
+      if (this.prefersReducedMotion()) finish();
+      else element.addEventListener("animationend", finish, { once: true });
+    });
+  },
   toggleNode(key: string): void {
-    if (this.collapsed.has(key)) this.collapsed.delete(key); else this.collapsed.add(key);
-    this.render();
+    if (this.collapsed.has(key)) {
+      this.collapsed.delete(key);
+      this.expandAnim = key;
+      this.render();
+      window.clearTimeout(this.expandAnimTimer);
+      this.expandAnimTimer = window.setTimeout(() => { this.expandAnim = null; }, 260);
+      return;
+    }
+    const [, id] = key.split(":");
+    const row = this.root?.querySelector(`.sz-row[data-id="${id}"]`);
+    const children = row?.nextElementSibling?.classList.contains("sz-children") ? row.nextElementSibling as HTMLElement : null;
+    if (!children) {
+      this.collapsed.add(key);
+      this.render();
+      return;
+    }
+    this.prepareCollapse(children);
+    window.setTimeout(() => {
+      this.collapsed.add(key);
+      this.render();
+    }, this.prefersReducedMotion() ? 0 : 210);
   },
   // 保存分类提示词（分类定义）
   savePrompt(kind: "goal" | "task" | "subtask", id: string): void {
@@ -918,10 +958,55 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
   },
 
   // ---- 记录操作 ----
+  toggleRecordDetail(button: HTMLElement): void {
+    const record = button.closest<HTMLElement>(".sz-rec");
+    const detail = record?.querySelector<HTMLElement>(".sz-rec-detail");
+    if (!record || !detail) return;
+    if (record.classList.contains("expanded")) {
+      detail.style.maxHeight = `${detail.scrollHeight}px`;
+      detail.getBoundingClientRect();
+      record.classList.remove("expanded");
+      detail.style.maxHeight = "0px";
+      return;
+    }
+    record.classList.add("expanded");
+    if (this.prefersReducedMotion()) {
+      detail.style.maxHeight = "none";
+      return;
+    }
+    detail.style.maxHeight = "0px";
+    detail.getBoundingClientRect();
+    detail.style.maxHeight = `${detail.scrollHeight}px`;
+    const finish = (event: TransitionEvent): void => {
+      if (event.propertyName === "max-height" && record.classList.contains("expanded")) {
+        detail.style.maxHeight = "none";
+        detail.removeEventListener("transitionend", finish);
+      }
+    };
+    detail.addEventListener("transitionend", finish);
+  },
   toggleRecGroup(key: string): void {
-    if (this.recCollapsed.has(key)) this.recCollapsed.delete(key);
-    else this.recCollapsed.add(key);
-    this.render();
+    if (this.recCollapsed.has(key)) {
+      this.recCollapsed.delete(key);
+      this.expandAnim = "rec:" + key;
+      this.render();
+      window.clearTimeout(this.expandAnimTimer);
+      this.expandAnimTimer = window.setTimeout(() => { this.expandAnim = null; }, 260);
+      return;
+    }
+    const button = this.root?.querySelector(`[data-act="toggle-rec-group"][data-key="${key}"]`);
+    const list = button?.closest(".sz-sec")?.nextElementSibling?.classList.contains("sz-rec-list")
+      ? button.closest(".sz-sec")!.nextElementSibling as HTMLElement : null;
+    if (!list) {
+      this.recCollapsed.add(key);
+      this.render();
+      return;
+    }
+    this.prepareCollapse(list);
+    window.setTimeout(() => {
+      this.recCollapsed.add(key);
+      this.render();
+    }, this.prefersReducedMotion() ? 0 : 210);
   },
   delRecord(key: string): void {
     const recs = Store.read<BrowseRecord[]>(K.records, []);
@@ -1484,6 +1569,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     else if (this.tab === "records") this.renderRecords();
     else if (this.tab === "profile") this.renderProfile();
     else this.renderSettings();
+    this.prepareExpandAnimations();
     this.renderTodo();
     // 再更新 toolbar 状态（与 body 渲染分开，避免闪烁）
     this.els.toolbar.classList.toggle("on", this.tab === "records"); // 工具栏在记录标签页始终显示
@@ -1572,7 +1658,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       ${this.deleteConfirm("task", t.id, g.id)}
       ${this.editingPrompt === t.id ? promptEditor("task", t.id, t.prompt || "") : ""}
       ${collapsed ? "" : `
-      <div class="sz-children">
+      <div class="sz-children ${this.expandAnim === "t:" + t.id ? "sz-expand-enter" : ""}">
         ${(t.subtasks || []).map((s) => subtaskRow(g, s)).join("")}
         <div class="sz-row sz-add-node-row">
           <span class="sz-caret-spacer"></span>
@@ -1607,7 +1693,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       ${this.colorGoalId === g.id ? colorPalette(g) : ""}
       ${this.editingPrompt === g.id ? promptEditor("goal", g.id, g.prompt || "") : ""}
       ${collapsed ? "" : `
-      <div class="sz-children">
+      <div class="sz-children ${this.expandAnim === "g:" + g.id ? "sz-expand-enter" : ""}">
         ${(g.tasks || []).map((t) => taskRow(g, t)).join("")}
         <div class="sz-row sz-add-node-row">
           <span class="sz-caret-spacer"></span>
@@ -1836,7 +1922,7 @@ this.els.body.innerHTML = `
         <span class="sz-gtitle sz-group-title" data-act="enter-group" data-key="${esc(g.key)}" title="进入该分组">${esc(g.name)}</span>
         <span class="sz-count">${g.items.length}</span>
       </div>`;
-      if (!collapsed) html += `<div class="sz-rec-list">${g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("")}</div>`;
+      if (!collapsed) html += `<div class="sz-rec-list ${this.expandAnim === "rec:" + g.key ? "sz-expand-enter" : ""}">${g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("")}</div>`;
     }
     this.els.body.innerHTML = html || `<div class="sz-empty-card">
       <div class="sz-empty-card-icon">${ICONS.globe}</div>

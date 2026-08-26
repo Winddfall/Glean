@@ -149,8 +149,8 @@
 .sz-rec-actions { display: flex; gap: 4px; flex: none; align-items: center; }
 .sz-rel-badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--bg-badge); color: var(--tx-secondary); flex: none; }
 .sz-rec.expanded .sz-rmeta { -webkit-line-clamp: unset; overflow: visible; }
-.sz-rec-detail { display: none; margin-top: 6px; padding: 8px; background: var(--bg-card); border-radius: 6px; font-size: 12px; color: var(--tx-tertiary); line-height: 1.6; word-break: break-word; }
-.sz-rec.expanded .sz-rec-detail { display: block; }
+.sz-rec-detail { max-height: 0; margin-top: 0; padding: 0 8px; overflow: hidden; opacity: 0; background: var(--bg-card); border-radius: 6px; font-size: 12px; color: var(--tx-tertiary); line-height: 1.6; word-break: break-word; transition: max-height .22s cubic-bezier(.2,0,0,1), margin-top .22s ease, padding .22s ease, opacity .16s ease; }
+.sz-rec.expanded .sz-rec-detail { margin-top: 6px; padding: 8px; opacity: 1; }
 .sz-detail-sec { margin-top: 8px; }
 .sz-detail-sec:first-child { margin-top: 0; }
 .sz-detail-sec-title { font-size: 12px; font-weight: 600; color: var(--tx-primary); margin-bottom: 4px; }
@@ -289,6 +289,12 @@
 .sz-ntitle.clickable { cursor: pointer; }
 .sz-ntitle.clickable:hover { color: var(--accent); }
 .sz-children { margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--bd-light); }
+.sz-children, .sz-rec-list { transform-origin: top; }
+.sz-expand-enter { overflow: hidden; animation: sz-expand-in .22s cubic-bezier(.2,0,0,1) both; }
+.sz-collapse-leave { overflow: hidden; animation: sz-collapse-out .2s cubic-bezier(.4,0,1,1) both; pointer-events: none; }
+@keyframes sz-expand-in { from { height: 0; opacity: 0; transform: translateY(-4px) scaleY(.96); } to { height: var(--collapse-size); opacity: 1; transform: translateY(0) scaleY(1); } }
+@keyframes sz-collapse-out { from { height: var(--collapse-size); opacity: 1; transform: translateY(0) scaleY(1); } to { height: 0; opacity: 0; transform: translateY(-3px) scaleY(.96); } }
+@media (prefers-reduced-motion: reduce) { .sz-expand-enter, .sz-collapse-leave { animation: none; } .sz-rec-detail { transition: none; } }
 .sz-task-input { flex: 0 0 82px; width: 82px; }
 .sz-sub-input { flex: 0 0 96px; width: 96px; margin-left: 24px; margin-right: 24px; }
 .sz-caret-spacer { width: 22px; flex: none; }
