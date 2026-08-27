@@ -470,7 +470,12 @@ export const Panel = {
     }
     else if (act === "ac-complete") this.completeInput();
     else if (act === "ask-dsh") this.askSelectionToDsh();
-    else if (act === "toggle-ask-dsh") { saveSettings({ askDsh: !settings().askDsh }); this.renderSettings(); }
+    else if (act === "toggle-ask-dsh") {
+      const askDsh = !settings().askDsh;
+      saveSettings({ askDsh });
+      btn.classList.toggle("on", askDsh);
+      btn.setAttribute("aria-checked", String(askDsh));
+    }
   },
   onInput(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLTextAreaElement;
