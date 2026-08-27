@@ -1898,7 +1898,7 @@ this.els.body.innerHTML = `
       </div>`;
       if (!collapsed) html += `<div class="sz-rec-list ${this.expandAnim === "rec:" + g.key ? "sz-expand-enter" : ""}">${g.items.sort(this.recSort === "rel" ? byRel : byTime).slice(0, 50).map((item) => recHtml(item, "")).join("")}</div>`;
     }
-    this.els.body.innerHTML = html || `<div class="sz-empty-card">
+    this.els.body.innerHTML = (html ? `<div class="sz-note sz-priority-note" style="margin-bottom:8px">点击组名进入筛选视图，可按相关度或时间排序。<span>—— 足印不会骗人。</span></div>` + html : "") || `<div class="sz-empty-card">
       <div class="sz-empty-card-icon">${ICONS.globe}</div>
       <div class="sz-empty-card-title">还没有记录</div>
       <div class="sz-empty-card-desc">开始浏览，这里就会长出你的足迹。<br>工作网页按<strong>目标</strong>分组，摸鱼网页单独算账。</div>
@@ -1924,7 +1924,7 @@ this.els.body.innerHTML = `
       </div>
     </div>
     ${has
-      ? `${profile.facts.length ? `<div class="sz-sec">关于你</div>${list(profile.facts, "facts")}` : ""}${profile.preferences.length ? `<div class="sz-sec">偏好</div>${list(profile.preferences, "preferences")}` : ""}`
+      ? `<div class="sz-note sz-priority-note" style="margin-bottom:8px">画像从浏览记录自动提取，也可手动补充。<span>—— 认识你自己。</span></div>${profile.facts.length ? `<section class="sz-field sz-setting-card"><div class="sz-card-heading"><span class="sz-card-icon">${ICONS.fingerprint}</span><strong>关于你</strong></div>${list(profile.facts, "facts")}</section>` : ""}${profile.preferences.length ? `<section class="sz-field sz-setting-card"><div class="sz-card-heading"><span class="sz-card-icon">${ICONS.heart}</span><strong>偏好</strong></div>${list(profile.preferences, "preferences")}</section>` : ""}`
       : `<div class="sz-profile-empty">
           <div class="sz-profile-empty-icon">${ICONS.sparkle}</div>
           <div class="sz-profile-empty-title">还没有用户画像</div>
@@ -1945,13 +1945,14 @@ this.els.body.innerHTML = `
     ${this.renderStorageCard(storageSnapshot)}
     <section class="sz-field sz-setting-card sz-switch-card">
       <div class="sz-switch-text">
-        <span class="sz-switch-title">${ICONS.deepseek}<span>问问 DeepSeek Harness</span></span>
+        <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.deepseek}</span><strong>问问 DeepSeek Harness</strong></div>
         <span class="sz-switch-desc">选中网页文字后右键，把内容直接带进本地 DeepSeek Harness 继续提问。</span>
       </div>
       <button class="sz-switch ${s.askDsh ? "on" : ""}" data-act="toggle-ask-dsh" role="switch" aria-checked="${s.askDsh}" aria-label="问问 DeepSeek Harness"><span class="sz-switch-knob"></span></button>
     </section>
     <section class="sz-field sz-setting-card">
-      <span class="sz-label">记录分析提示词（留空则使用预设）</span>
+      <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.sparkle}</span><strong>记录分析提示词</strong></div>
+      <span class="sz-label" style="padding-left:36px">留空则使用预设</span>
       <textarea class="sz-textarea" data-role="prompt-input" placeholder="${esc(PRESET_PROMPT)}">${esc(promptVal)}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button class="sz-btn primary" data-act="save-settings">保存</button>
@@ -1959,7 +1960,7 @@ this.els.body.innerHTML = `
       </div>
     </section>
     <section class="sz-field sz-setting-card">
-      <span class="sz-label">配套 Skill 下载</span>
+      <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.download}</span><strong>配套 Skill 下载</strong></div>
       <div style="display:flex;gap:2px;margin-bottom:8px">
         ${cloneTabs.map((t) => `<button class="sz-btn" data-act="clone-tab" data-tab="${t.key}" style="border-bottom:${t.key === activeClone.key ? "2px solid transparent" : "2px solid var(--accent)"};border-radius:4px 4px 0 0;background:${t.key === activeClone.key ? "var(--bg-hover)" : "transparent"};padding:4px 10px;font-size:13px">${esc(t.label)}</button>`).join("")}
       </div>
