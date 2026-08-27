@@ -287,7 +287,7 @@ test("存储空间：仅统计拾知同源数据，可设置软上限并查看�
 
     const card = s.shadow.querySelector(".sz-storage-card");
     assert.ok(card, "设置页显示存储空间概览卡");
-    assert.strictEqual(s.shadow.querySelectorAll(".sz-setting-card").length, 4, "设置页其余区块全部使用统一卡片容器");
+    assert.strictEqual(s.shadow.querySelectorAll(".sz-setting-card").length, 5, "设置页其余区块全部使用统一卡片容器");
     assert.ok(card.textContent.includes("当前源数据"));
     assert.ok(card.textContent.includes("25 MB"), "默认软上限为 25 MB");
     assert.ok(!card.textContent.includes("2.0 MB"), "宿主网站自己的 localStorage 不计入拾知用量");
@@ -352,6 +352,17 @@ test("右键「问问 DeepSeek Harness」：选中内容经 URL hash 送往 dsh 
     assert.ok(typeof payload.text === "string" && payload.text.length > 0, "载荷含指令+选中内容");
     assert.ok(payload.text.includes("请分析以下网页选中内容"), "消息包含指令模板");
     assert.ok(payload.text.includes("https://liaoxuefeng.com"), "消息包含来源链接");
+
+    // 3. 设置页可修改 dsh 服务地址，右键跳转使用自定义端口
+    s.shadow.querySelector('[data-tab="settings"]').click();
+    const dshUrlInput = s.shadow.querySelector('[data-role="dsh-url"]');
+    assert.strictEqual(dshUrlInput.value, "http://127.0.0.1:3080/", "服务地址默认指向本地 3080 端口");
+    dshUrlInput.value = "http://127.0.0.1:4080";
+    dshUrlInput.dispatchEvent(new s.window.Event("change", { bubbles: true }));
+    const savedSettings = JSON.parse(s.window.localStorage.getItem("shizhi.settings"));
+    assert.strictEqual(savedSettings.dshUrl, "http://127.0.0.1:4080/", "合法服务地址自动保存并补全结尾斜杠");
+    dshBtn.click();
+    assert.ok(opened.url.startsWith("http://127.0.0.1:4080/#sz-dsh-ask="), "右键跳转使用自定义服务地址");
   } finally {
     s.close();
   }

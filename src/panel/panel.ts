@@ -5,7 +5,7 @@ import panelCss from "./panel.css";
 import panelHtml from "./panel.html";
 import fabLogoUrl from "./fab-logo.jpg";
 import {ICONS} from "./icons.js";
-import {K} from "../core/constants.js";
+import {DSH_URL, K} from "../core/constants.js";
 import {clamp, esc, uid, normalizeSearchTerm, enrichSearchTerm} from "../core/utils.js";
 import {askDsh, composeDshAsk} from "../dsh.js";
 import {getState, settings, Store} from "../store.js";
@@ -484,7 +484,19 @@ export const Panel = {
   },
   onChange(e: Event): void {
     const t = e.target as HTMLInputElement | HTMLSelectElement;
-    if (t.matches('[data-role="linked-url"]')) {
+    if (t.matches('[data-role="dsh-url"]')) {
+      const v = (t as HTMLInputElement).value.trim();
+      try {
+        const url = new URL(v || DSH_URL);
+        if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("invalid protocol");
+        const normalized = url.toString();
+        (t as HTMLInputElement).value = normalized;
+        saveSettings({ dshUrl: normalized });
+      } catch {
+        (t as HTMLInputElement).value = settings().dshUrl;
+        this.toast("DeepSeek Harness 服务地址需为 http(s) URL。", "err");
+      }
+    } else if (t.matches('[data-role="linked-url"]')) {
       const v = (t as HTMLInputElement).value.trim();
       saveSettings({ linkedUrl: v });
       if (v) this.linkedUrlNotice(v);
@@ -1288,7 +1300,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const sel = window.getSelection()?.toString().trim() || "";
     if (!sel) { this.hideCtxMenu(); return; }
     this.hideCtxMenu();
-    askDsh(composeDshAsk(sel, document.title, location.href));
+    askDsh(composeDshAsk(sel, document.title, location.href), settings().dshUrl || DSH_URL);
     this.toast("已打开 DeepSeek Harness 并填入选中内容，确认后可直接发送。", "ok");
   },
 
@@ -1954,6 +1966,10 @@ this.els.body.innerHTML = `
         <span class="sz-switch-desc">选中网页文字后右键，把内容直接带进本地 DeepSeek Harness 继续提问。</span>
       </div>
       <button class="sz-switch ${s.askDsh ? "on" : ""}" data-act="toggle-ask-dsh" role="switch" aria-checked="${s.askDsh}" aria-label="问问 DeepSeek Harness"><span class="sz-switch-knob"></span></button>
+    </section>
+    <section class="sz-field sz-setting-card">
+      <span class="sz-label">DeepSeek Harness 服务地址（可修改端口）</span>
+      <input class="sz-input" data-role="dsh-url" value="${esc(s.dshUrl)}" placeholder="${esc(DSH_URL)}" aria-label="DeepSeek Harness 服务地址">
     </section>
     <section class="sz-field sz-setting-card">
       <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.sparkle}</span><strong>记录分析提示词</strong></div>
