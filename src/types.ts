@@ -102,6 +102,7 @@ export interface Settings {
   linkedUrl: string;          // 当前关联网址（搜索跳转目标）
   analysisPrompt: string;     // 记录分析提示词（空 = 用预设）
   askDsh: boolean;            // 右键「问问 DeepSeek Harness」开关
+  dshUrl: string;             // DeepSeek Harness 服务地址
 }
 
 export interface Profile {

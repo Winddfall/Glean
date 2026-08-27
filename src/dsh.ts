@@ -16,9 +16,9 @@ export function composeDshAsk(sel: string, title: string, url: string): string {
 }
 
 /** 打开（或复用）dsh 标签页，把消息通过 URL hash 传过去 */
-export function askDsh(message: string): void {
+export function askDsh(message: string, dshUrl: string = DSH_URL): void {
   const payload = encodeURIComponent(JSON.stringify({ text: message, ts: Date.now() }));
-  window.open(DSH_URL + "#" + DSH_ASK_HASH + "=" + payload, "shizhi-dsh");
+  window.open(dshUrl + "#" + DSH_ASK_HASH + "=" + payload, "shizhi-dsh");
 }
 
 /**

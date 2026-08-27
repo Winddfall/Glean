@@ -347,11 +347,22 @@ test("右键「问问 DeepSeek Harness」：选中内容经 URL hash 送往 dsh 
     dshBtn.click();
     assert.ok(opened, "调用了 window.open");
     assert.strictEqual(opened.name, "shizhi-dsh", "复用固定标签页名");
-    assert.ok(opened.url.startsWith("http://127.0.0.1:3080/#sz-dsh-ask="), "URL 指向 dsh 且带标记 hash");
+    assert.ok(opened.url.startsWith("http://127.0.0.1:3080#sz-dsh-ask="), "URL 指向 dsh 且带标记 hash");
     const payload = JSON.parse(decodeURIComponent(opened.url.split("#sz-dsh-ask=")[1]));
     assert.ok(typeof payload.text === "string" && payload.text.length > 0, "载荷含指令+选中内容");
     assert.ok(payload.text.includes("请分析以下网页选中内容"), "消息包含指令模板");
     assert.ok(payload.text.includes("https://liaoxuefeng.com"), "消息包含来源链接");
+
+    // 3. 设置页可修改 dsh 服务地址，右键跳转使用自定义端口
+    s.shadow.querySelector('[data-tab="settings"]').click();
+    const dshUrlInput = s.shadow.querySelector('[data-role="dsh-url"]');
+    assert.strictEqual(dshUrlInput.value, "http://127.0.0.1:3080", "服务地址默认指向本地 3080 端口");
+    dshUrlInput.value = "http://127.0.0.1:4080";
+    dshUrlInput.dispatchEvent(new s.window.Event("change", { bubbles: true }));
+    const savedSettings = JSON.parse(s.window.localStorage.getItem("shizhi.settings"));
+    assert.strictEqual(savedSettings.dshUrl, "http://127.0.0.1:4080", "合法服务地址自动保存，不补全结尾斜杠");
+    dshBtn.click();
+    assert.ok(opened.url.startsWith("http://127.0.0.1:4080#sz-dsh-ask="), "右键跳转使用自定义服务地址");
   } finally {
     s.close();
   }
