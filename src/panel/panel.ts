@@ -489,7 +489,7 @@ export const Panel = {
       try {
         const url = new URL(v || DSH_URL);
         if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("invalid protocol");
-        const normalized = url.toString();
+        const normalized = v || DSH_URL;
         (t as HTMLInputElement).value = normalized;
         saveSettings({ dshUrl: normalized });
       } catch {
@@ -1964,12 +1964,10 @@ this.els.body.innerHTML = `
       <div class="sz-switch-text">
         <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.deepseek}</span><strong>问问 DeepSeek Harness</strong></div>
         <span class="sz-switch-desc">选中网页文字后右键，把内容直接带进本地 DeepSeek Harness 继续提问。</span>
+        <span class="sz-label">DeepSeek Harness 服务地址</span>
+        <input class="sz-input" data-role="dsh-url" value="${esc(s.dshUrl)}" placeholder="${esc(DSH_URL)}" aria-label="DeepSeek Harness 服务地址">
       </div>
       <button class="sz-switch ${s.askDsh ? "on" : ""}" data-act="toggle-ask-dsh" role="switch" aria-checked="${s.askDsh}" aria-label="问问 DeepSeek Harness"><span class="sz-switch-knob"></span></button>
-    </section>
-    <section class="sz-field sz-setting-card">
-      <span class="sz-label">DeepSeek Harness 服务地址（可修改端口）</span>
-      <input class="sz-input" data-role="dsh-url" value="${esc(s.dshUrl)}" placeholder="${esc(DSH_URL)}" aria-label="DeepSeek Harness 服务地址">
     </section>
     <section class="sz-field sz-setting-card">
       <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.sparkle}</span><strong>记录分析提示词</strong></div>

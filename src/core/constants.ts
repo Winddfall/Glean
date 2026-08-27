@@ -18,7 +18,7 @@ export const K = {
 } as const;
 
 // DeepSeek Harness（dsh）本地服务：右键「问问 DeepSeek Harness」跳转目标
-export const DSH_URL = "http://127.0.0.1:3080/";
+export const DSH_URL = "http://127.0.0.1:3080";
 
 export const DEFAULT_SETTINGS: Settings = {
   dwellMs: 3000,        // 停留闸：可见且连续停留 >= 3s 才记录
