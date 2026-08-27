@@ -11,7 +11,7 @@
   --tx-link: #2563eb; --tx-danger: #dc2626; --tx-inverse: #f9fafb;
   --accent: #5f8f55; --accent-soft: #c8ddc2; --fab-color: #5f8f55;
   --rel-high: #8ba888; --rel-mid: #9ba5b4; --rel-low: #c4a59a; --rel-none: #d6d3d1;
-  --shadow-panel: 0 10px 32px rgba(0,0,0,.16); --shadow-fab: 0 4px 14px rgba(0,0,0,.14);
+  --shadow-panel: 0 10px 32px rgba(0,0,0,.16); --shadow-fab: 0 4px 14px rgba(0,0,0,.14); --fab-glow: 0 10px 22px -4px rgba(95,143,85,.4);
 }
 /* ---- 深色色板 ---- */
 .sz-dock.dark {
@@ -24,7 +24,7 @@
   --tx-link: #6ea8fe; --tx-danger: #f87171; --tx-inverse: #1a1b1e;
   --accent: #76a86c; --accent-soft: #31502f; --fab-color: #76a86c;
   --rel-high: #9bc4a8; --rel-mid: #a8b2c0; --rel-low: #d0aea3; --rel-none: #4a4744;
-  --shadow-panel: 0 10px 32px rgba(0,0,0,.5); --shadow-fab: 0 4px 14px rgba(0,0,0,.4);
+  --shadow-panel: 0 10px 32px rgba(0,0,0,.5); --shadow-fab: 0 4px 14px rgba(0,0,0,.4); --fab-glow: 0 10px 22px -4px rgba(118,168,108,.45);
 }
 
 /* ---- 主题切换过渡 ---- */
@@ -38,9 +38,10 @@
 .sz-dock { position: fixed; left: 0; top: 0; width: 40px; height: 40px; z-index: 2147483000; }
 .sz-fab { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--bg-panel); border: 1px solid var(--bd-panel); box-shadow: var(--shadow-fab); display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--fab-color); padding: 0; }
 .sz-fab.dragging { cursor: grabbing; }
-.sz-fab:hover { background: var(--bg-hover); }
+.sz-fab:hover { background: var(--bg-hover); box-shadow: var(--shadow-fab), var(--fab-glow); }
 .sz-fab.on { color: var(--accent); border-color: var(--accent-soft); }
-.sz-fab-logo { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; pointer-events: none; }
+.sz-fab-logo { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; pointer-events: none; transition: transform .2s ease-out; }
+.sz-fab:hover .sz-fab-logo { transform: scale(1.08); }
 .sz-pending { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); display: none; padding: 2px 8px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--bd-panel); box-shadow: 0 2px 8px rgba(0,0,0,.1); color: var(--tx-secondary); font-size: 11px; pointer-events: none; white-space: nowrap; }
 .sz-pending.on { display: inline-block; animation: sz-breathe 1.6s ease-in-out infinite; }
 @keyframes sz-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
