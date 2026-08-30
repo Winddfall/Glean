@@ -160,77 +160,6 @@ function storagePercent(snapshot: StorageQuotaSnapshot): number {
   return Math.round(Math.min(1, snapshot.usageRatio) * 100);
 }
 
-// 首次使用写入演示数据，便于理解面板结构（已有数据则不覆盖）
-function seedDemoData(): void {
-  const goals = Store.read<Goal[]>(K.goals, []);
-  const records = Store.read<BrowseRecord[]>(K.records, []);
-  if (goals.length || records.length) return;
-
-  const g1: Goal = {
-    id: "demo-g1",
-    title: "写季度报告",
-    status: "active",
-    createdAt: Date.now() - 86400000 * 3,
-    tasks: [
-      {
-        id: "demo-t1",
-        title: "整理数据",
-        subtasks: [
-          { id: "demo-s1", title: "导出报表" },
-          { id: "demo-s2", title: "核对数字" },
-        ],
-      },
-      { id: "demo-t2", title: "撰写正文" },
-    ],
-    todos: [
-      { id: "demo-todo1", text: "收集季度数据", taskId: "demo-t1", contrib: {}, coverage: 0.4, status: "open", manual: false, searchTerms: ["季度数据", "Q3 营收"] },
-      { id: "demo-todo2", text: "校对排版", taskId: "demo-t2", contrib: {}, coverage: 0, status: "open", manual: false, searchTerms: ["排版规范"] },
-    ],
-  };
-  const g2: Goal = {
-    id: "demo-g2",
-    title: "学习 React",
-    status: "active",
-    createdAt: Date.now() - 86400000 * 5,
-    tasks: [],
-    todos: [
-      { id: "demo-todo3", text: "看完官方文档 Hooks 章节", contrib: {}, coverage: 0.1, status: "open", manual: false, searchTerms: ["React Hooks"] },
-    ],
-  };
-  Store.write(K.goals, [g1, g2]);
-
-  const longSummary =
-    "这是一条用于测试「查看全文/收起」功能的长摘要。正文摘录会被截断并显示展开按钮，点击后可查看完整内容。" +
-    "季度报告需要汇总各部门 KPI、营收增速、用户留存等核心指标，并与去年同期进行环比分析。".repeat(3);
-
-  Store.write(K.records, [
-    {
-      id: "demo-r1", url: "https://example.com/report-template", origin: "example.com",
-      title: "季度报告模板", h1: "季度报告模板", meta: "report",
-      capturedAt: Date.now() - 3600000 * 2, excerptHash: "h1", preview: "预览内容",
-      category: "goal:demo-g1", relevance: 85,
-      findings: ["模板结构完整，可直接套用"],
-      notes: [{ topic: "报告结构", content: "包含 KPI、增速、留存三个核心模块。", relevance: 90 }],
-      summary: longSummary, keywords: ["报告", "季度", "模板"],
-    },
-    {
-      id: "demo-r2", url: "https://example.com/data-source", origin: "example.com",
-      title: "数据中心", h1: "数据中心", meta: "data",
-      capturedAt: Date.now() - 3600000 * 4, excerptHash: "h2", preview: "预览",
-      category: "goal:demo-g1", relevance: 55,
-      summary: "各部门数据汇总页面，可导出 CSV 和 Excel。", keywords: ["数据", "导出"],
-    },
-    {
-      id: "demo-r3", url: "https://example.com/slacking", origin: "example.com",
-      title: "摸鱼网页", h1: "娱乐", meta: "fun",
-      capturedAt: Date.now() - 3600000 * 6, excerptHash: "h3", preview: "预览",
-      category: "slacking", summary: "无关的娱乐内容。", keywords: ["娱乐"],
-    },
-  ]);
-
-  Store.write(K.state, { workMode: true, activeSince: Date.now() });
-}
-
 export const Panel = {
   tab: "goals",
   recQuery: "",
@@ -280,7 +209,6 @@ export const Panel = {
     themeBtn: HTMLButtonElement;
   },
   mount(): void {
-    seedDemoData();
     const host = document.createElement("div");
     host.id = "shizhi-host";
     const shadow = host.attachShadow({ mode: "open" });
