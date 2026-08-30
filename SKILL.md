@@ -30,13 +30,60 @@ Windows 下 `~` 解析为 `%USERPROFILE%`。
 {
   "exportedAt": 1234567890123,
   "goals": [
-    { "id": "g_xxx", "title": "目标名称", "status": "active", "tasks": [...], "prompt": "..." }
+    {
+      "id": "g_xxx",
+      "title": "目标名称",
+      "status": "active",
+      "createdAt": 1234567890123,
+      "prompt": "...",
+      "tasks": [
+        {
+          "id": "t_xxx", "title": "任务名称", "prompt": "...",
+          "subtasks": [
+            { "id": "s_xxx", "title": "子任务名称", "prompt": "..." }
+          ]
+        }
+      ],
+      "todos": [
+        {
+          "id": "todo_xxx", "text": "待办描述", "taskId": "t_xxx",
+          "coverage": 0.5, "status": "open", "manual": false,
+          "searchTerms": [
+            { "display": "展示词", "query": "查询词" }
+          ]
+        }
+      ]
+    }
   ],
   "records": {
-    "goal:g_xxx": [ { "id": "...", "url": "...", "title": "...", ... } ],
-    "slacking": [ ... ],
-    "pending": [ ... ],
-    "error": [ ... ]
+    "goal:g_xxx": [
+      {
+        "id": "r_xxx", "url": "https://example.com/page",
+        "origin": "https://www.zhihu.com",
+        "title": "页面标题", "h1": "H1标题", "meta": "meta描述",
+        "capturedAt": 1234567890123, "excerptHash": "abc123",
+        "preview": "页面预览文本...", "category": "goal:g_xxx",
+        "summary": "摘要内容", "keywords": ["AI"],
+        "relevance": 92,
+        "findings": ["发现1", "发现2"],
+        "notes": [
+          { "topic": "主题A", "content": "笔记内容", "relevance": 92 }
+        ],
+        "matches": [
+          {
+            "goalId": "g_xxx", "taskId": "t_xxx", "subtaskId": "s_xxx",
+            "title": "匹配标题", "relevance": 92, "reasoning": "匹配理由",
+            "findings": ["发现1"], "notes": [...],
+            "keyQuotes": [
+              { "quote": "引用原文", "context": "上下文说明" }
+            ]
+          }
+        ]
+      }
+    ],
+    "slacking": [ ],
+    "pending": [ ],
+    "error": [ ]
   }
 }
 ```
@@ -47,6 +94,10 @@ Windows 下 `~` 解析为 `%USERPROFILE%`。
 - `"pending"` —— 分析中
 - `"error"` —— 分析失败
 - `"other"` —— 未分类/未知分类（fallback）
+
+> **searchTerms 兼容性**：`searchTerms` 可能是字符串数组（旧格式），也可能是 `{display, query}` 对象数组（新格式，v0.2.0+）。处理时需兼容两种格式：字符串项直接用做 `query`，`display` 可省略或与 `query` 相同。
+>
+> **origin 字段**：JSON 中的 `origin` 为页面来源域名（如 `https://www.zhihu.com`），可直接提取域名部分作为 `domain`，无需从 `url` 解析。
 
 ## .md 文件格式示例
 
@@ -93,7 +144,13 @@ keywords: ["AI", "大模型"]
    - 生成 `.md` 文件（frontmatter + 正文）
 4. **统一归档步骤**：
    - 如果本地已存在同名文件夹，直接合并（不覆盖已有文件，同名文件加时间戳后缀）
-   - 同步到 SQLite（插入/更新 `records` 表）
+   - 同步到 SQLite（插入/更新 `records` 表，详见下方 upsert 策略）
+5. **归档目标元数据**（可选但推荐）：
+   - 对每个 goal，生成 `{目标名}/_meta.md`，保存 goal 的完整结构：
+     - `prompt`（研究目标描述）
+     - `tasks` 列表（含 subtasks 层级）
+     - `todos` 列表（含 `coverage` 进度、`status`、`searchTerms`）
+   - 此文件帮助用户后续回顾研究框架和待办进度，不写入 SQLite（仅作本地文档索引）
 
 **JSON → .md 字段映射**
 
@@ -101,15 +158,34 @@ keywords: ["AI", "大模型"]
 |-----------|----------------------|
 | `url` | frontmatter `url` |
 | `title` | frontmatter `title` |
-| `url` 的域名 | frontmatter `domain` |
+| `origin`（来源域名，如 `https://www.zhihu.com`） | frontmatter `domain`（提取域名部分，如 `zhihu.com`） |
 | `capturedAt`（毫秒时间戳） | frontmatter `captured_at`，转 ISO 8601 |
 | `relevance` | frontmatter `relevance` |
 | `category` | frontmatter `category` |
 | `keywords` | frontmatter `keywords` |
+| `h1` | frontmatter `h1`（页面主标题，可能与 `title` 不同） |
+| `meta` | 正文 `## Meta 描述`（页面 meta description 原文） |
+| `excerptHash` | frontmatter `excerpt_hash`（用于内容去重标识） |
+| `preview` | 正文 `## 预览`（截取前 300 字符；超长 preview 与 `summary` 重复度高，截断可避免 .md 文件臃肿） |
 | `summary` | 正文 `## 摘要` |
 | `findings` | 正文 `## 关键发现`（每项一行 `- `） |
-| `notes` | 正文 `## 笔记`（每条 `### {topic}` + 内容） |
-| `matches` | 正文 `## 分类匹配`（每个匹配一节：`### {目标}/{任务}/{子任务}` 层级标题并注明 `goalId`/`taskId`/`subtaskId`（为 null 的层级省略）；节内保留该分类的 `title`、`relevance`、`reasoning`、`findings`、`notes`、`keyQuotes`） |
+| `notes` | 正文 `## 笔记`（每条 `### {topic}`，内容含 `relevance` 分数） |
+| `matches` | 正文 `## 分类匹配`（见下方详细规则） |
+
+**`matches` 写入规则**：
+每个匹配一节，标题格式为 `### {目标名}/{任务名}/{子任务名}`（为 null 的层级省略），并注明 `goalId`/`taskId`/`subtaskId`。节内保留：`title`（匹配标题）、`relevance`（匹配相关度）、`reasoning`（匹配理由）、`findings`（匹配发现）、`notes`（匹配笔记，格式同顶层 notes）、`keyQuotes`（关键引用，每条含 `quote` 原文和 `context` 上下文）。
+
+**`content_hash` 生成规则**：
+JSON 导出数据不包含 `content_hash`，需由 Agent 自行生成。推荐算法：`hashlib.md5(f"{url}|{excerptHash}|{capturedAt}".encode()).hexdigest()`，即对 `url + "|" + excerptHash + "|" + str(capturedAt)` 取 MD5。若 `excerptHash` 不存在，退化为 `url|capturedAt`。此哈希保证同一页面同一时刻的导出幂等（重复导入视为同一条记录）。
+
+**增量导入 upsert 策略**：
+同一页面可能在不同导出批次中发生变化（如首次导出时 `category` 为 `pending`，再次导出时已分析完成变为 `goal:g_xxx`）。归档时需：
+1. 按 `content_hash` 查重。不存在则 `INSERT`（新记录）
+2. 存在则对比关键字段：`category`、`excerptHash`、`summary`、`findings`、`relevance`
+3. 任一关键字段有变化 → `UPDATE` 更新该记录的 SQLite 行和 `.md` 文件（重写文件）
+4. 无变化 → 跳过，避免无意义的磁盘写入
+
+> 注意：`.md` 文件路径可能因 `category` 变化而改变（如从 `分析中/` 移到 `目标名称/`），更新时需同时处理旧路径文件删除/移动。
 
 > **YAML frontmatter 安全编码**：frontmatter 的值（尤其是 `title`、`url`、`summary`）可能含引号、换行符、冒号等 YAML 特殊字符。生成 frontmatter 时必须使用安全标量格式：
 > - 字符串值统一用双引号包裹，内部双引号转义为 `\"`，换行符转义为 `\n`
@@ -122,15 +198,17 @@ keywords: ["AI", "大模型"]
 
 用户要求"帮我汇总 XX 目标的记录"或"分析一下 摸鱼 里的资料"时：
 
-1. **查询 SQLite**：按 `goal_path` 筛选记录（目标记录为目标文件夹名，分类记录为 摸鱼/分析中/分析失败）
+1. **查询 SQLite**：
+   - **主记录**：按 `goal_path` 筛选记录（目标记录为目标文件夹名，分类记录为 摸鱼/分析中/分析失败）
+   - **关联记录**：读取各记录的 `.md` 正文 `## 分类匹配` 节，筛选 `matches` 中 `goalId` 匹配当前汇总目标、且 `relevance ≥ 60` 的记录。这类记录虽归档在其他目标下，但对该目标有参考价值，应在报告中标注为"跨目标关联"
 2. **读取记录内容**：获取每条记录的摘要、发现、笔记
 3. **判断证据类型与置信度**：
    - 根据 `domain` 和页面内容判断证据类型
    - 根据内容质量和来源权威性评估置信度
 4. **生成结构化报告**：
-   - 报告标题和范围说明
+   - 报告标题和范围说明（含主记录数 + 关联记录数）
    - 按目标/分类分节组织
-   - 每节包含：关键发现汇总、证据列表（含来源、置信度、引用）、待进一步确认的问题
+   - 每节包含：关键发现汇总、证据列表（含来源、置信度、引用，关联记录需标注来源目标）、待进一步确认的问题
    - 结论和建议
 
 ## SQLite Schema
@@ -223,10 +301,11 @@ Agent 根据 `domain` 和页面内容判断每条记录的证据类型：
 ### 报告原则
 
 1. **按目标判断用法**：同一篇记录在不同目标下可能有不同的价值。Agent 应根据当前汇总的目标/分类来判断每条记录的核心价值。
-2. **置信度透明**：明确标注每条关键信息的置信度等级（高/中/低）及理由。
-3. **引用原文**：尽量使用 `.md` 文件中的笔记内容作为直接引用，保持证据链完整。
-4. **去重合并**：同一主题下多篇记录的观点相近时，合并表述而非逐一罗列。
-5. **指出空白**：如果某个目标下记录过少或质量偏低，应明确指出并建议补充。
+2. **标题展示优先用 `h1`**：`title` 常含平台前缀（如 `"(1 封私信) 为什么... - 知乎"`），而 `h1` 是干净的页面主标题。生成报告和引用记录时，优先以 `h1` 作为展示标题，`title` 作为备选（`h1` 不存在或为空时使用 `title`）。
+3. **置信度透明**：明确标注每条关键信息的置信度等级（高/中/低）及理由。
+4. **引用原文**：尽量使用 `.md` 文件中的笔记内容作为直接引用，保持证据链完整。
+5. **去重合并**：同一主题下多篇记录的观点相近时，合并表述而非逐一罗列。
+6. **指出空白**：如果某个目标下记录过少或质量偏低，应明确指出并建议补充。
 
 ## 环境要求
 
@@ -251,3 +330,8 @@ Agent 根据 `domain` 和页面内容判断每条记录的证据类型：
 > 用户："分析一下 摸鱼 里的资料"
 >
 > Agent：按 goal_path="摸鱼" 筛选 → 生成报告
+
+**非 goal 分类查询**
+> 用户："帮我看看分析失败里有什么"
+>
+> Agent：按 goal_path="分析失败" 筛选 → 读取错误记录 → 汇总失败原因（如域名解析失败、内容提取超时等）→ 给出排查建议或建议重新分析哪些页面

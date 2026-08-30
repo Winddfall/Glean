@@ -35,6 +35,15 @@
 }
 
 * { box-sizing: border-box; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+/* 滚动条：背景透明，thumb 跟随主题色 */
+.sz-body::-webkit-scrollbar,
+.sz-todo-pop::-webkit-scrollbar { width: 5px; }
+.sz-body::-webkit-scrollbar-track,
+.sz-todo-pop::-webkit-scrollbar-track { background: transparent; }
+.sz-body::-webkit-scrollbar-thumb,
+.sz-todo-pop::-webkit-scrollbar-thumb { background: var(--tx-muted); border-radius: 3px; }
+.sz-body::-webkit-scrollbar-thumb:hover,
+.sz-todo-pop::-webkit-scrollbar-thumb:hover { background: var(--tx-secondary); }
 .sz-dock { position: fixed; left: 0; top: 0; width: 40px; height: 40px; z-index: 2147483000; }
 .sz-fab { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--bg-panel); border: 1px solid var(--bd-panel); box-shadow: var(--shadow-fab); display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--fab-color); padding: 0; }
 .sz-fab.dragging { cursor: grabbing; }

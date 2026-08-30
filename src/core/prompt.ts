@@ -24,7 +24,7 @@ URL: {{URL}}
 
 [输出格式]
 只输出 JSON（不要输出任何其他内容）：
-{"summary":"80字以内页面摘要（通用，不偏向任何分类）","keywords":["关键词"],"matches":[{"goalId":"g_xxx","taskId":"t_xxx或null","subtaskId":"s_xxx或null","title":"根据该分类主题重写的标题（15字以内）","relevance":0,"reasoning":"为什么与该分类相关","findings":["关键发现1","关键发现2"],"notes":[{"topic":"主题","content":"详细笔记"}],"keyQuotes":[{"quote":"原文关键句","context":"上下文"}]}]}
+{"summary":"80字以内页面摘要（通用，不偏向任何分类）","keywords":["关键词"],"findings":["通用关键发现1","通用关键发现2"],"notes":[{"topic":"通用主题","content":"详细笔记"}],"keyQuotes":[{"quote":"原文关键句","context":"上下文"}],"matches":[{"goalId":"g_xxx","taskId":"t_xxx或null","subtaskId":"s_xxx或null","title":"根据该分类主题重写的标题（15字以内）","relevance":0,"reasoning":"为什么与该分类相关","findings":["分类视角发现1","分类视角发现2"],"notes":[{"topic":"分类主题","content":"分类视角笔记"}],"keyQuotes":[{"quote":"原文关键句","context":"上下文"}]}]}
 
 [规则]
 1. 一个网页可以匹配 0 个、1 个或多个分类；与所有分类都无关时 matches 返回空数组 []。
@@ -33,12 +33,17 @@ URL: {{URL}}
 4. 【最关键】每个 match 的 title / findings / notes / keyQuotes 必须完全不同。不同分类的关注角度由各自的"说明"（prompt）定义，你应从该分类的视角审视网页。
 5. title 必须根据该分类的主题重新提炼，不要直接复制网页原标题。标题要精准概括"这个网页对该分类有什么价值"，15字以内，超出用省略号。这是用户第一眼看到的内容，必须一针见血。
 6. 判断"什么是有价值的信息"时，以该分类的说明为准。分类说明里写了关注什么主题、什么关键词——你就据此提取。不要写一个"通用版"然后复制给多个分类。
-7. findings 写该分类视角下的关键信息点。允许详细展开，1 条 finding 可以写 1-4 句话。信息量大的页面可以写到 8-10 条。禁止写"在不同领域有应用""具有重要价值"这类空话。
-8. notes 按主题拆分，每个主题一条。content 先引用原文关键句（用引号），紧接着写分析——这个信息在该分类视角下为什么有价值。允许详细展开，3-10 句话都可以。
-9. keyQuotes 尽量多提供，最多 6 条。quote 必须逐字来自网页正文，不得改写。
+7. match 里的 findings 写该分类视角下的关键信息点。允许详细展开，1 条 finding 可以写 1-4 句话。信息量大的页面可以写到 8-10 条。禁止写"在不同领域有应用""具有重要价值"这类空话。
+8. match 里的 notes 按主题拆分，每个主题一条。content 先引用原文关键句（用引号），紧接着写分析——这个信息在该分类视角下为什么有价值。允许详细展开，3-10 句话都可以。
+9. match 里的 keyQuotes 尽量多提供，最多 6 条。quote 必须逐字来自网页正文，不得改写。
 10. reasoning 必须引用网页里的具体内容说明为什么与该分类相关。
-11. 内容丰富的网页，请充分利用输出空间，不要刻意精简。
-12. 拿不准是否相关时，宁可判定为不相关。
+11. 【摸鱼场景通用分析】当 matches 为空时（页面与所有目标都不相关，归入"摸鱼"），必须在顶层输出 findings / notes / keyQuotes。这些是"不针对任何分类"的通用分析：
+    - findings：从整页内容中提炼的关键信息点，写法同 match findings，必须写得充实完整
+    - notes：按主题拆分的通用笔记，写法同 match notes
+    - keyQuotes：页面中最有价值的关键引用
+    当 matches 不为空时，顶层 findings / notes / keyQuotes 可选，以 match 里的内容为准。
+12. 内容丰富的网页，请充分利用输出空间，不要刻意精简。
+13. 拿不准是否相关时，宁可判定为不相关。
 
 [错误示例——绝对禁止]
 下面的输出是错误的，因为两个 match 的分析内容完全一样，只是把 goalId 换了：
@@ -152,14 +157,29 @@ export function validateAnalysis(json: unknown, goals: Goal[]): AnalysisResult {
   matches.sort((a, b) => b.relevance - a.relevance);
   const main = matches[0] || null;
 
+  // 解析顶层通用 findings / notes（当 matches 为空时用作摸鱼记录的通用分析）
+  const generalFindings = Array.isArray(obj.findings)
+    ? obj.findings.slice(0, 12).map((f) => truncate(String(f), 600))
+    : [];
+  const generalNotes = Array.isArray(obj.notes)
+    ? obj.notes.slice(0, 10).map((n): NoteEntry => {
+        const no = (n ?? {}) as Record<string, unknown>;
+        return {
+          topic: truncate(typeof no.topic === "string" ? no.topic : "", 60),
+          content: truncate(typeof no.content === "string" ? no.content : "", 2000),
+          relevance: 0,
+        };
+      }).filter((n) => n.topic && n.content)
+    : [];
+
   return {
     relevant: matches.length > 0,
     goalId: main ? main.goalId : null,
     summary: truncate(typeof obj.summary === "string" ? obj.summary : "", 200),
     keywords: Array.isArray(obj.keywords) ? obj.keywords.slice(0, 8).map(String) : [],
     relevance: main ? main.relevance : 0,
-    findings: main ? main.findings : [],
-    notes: main ? main.notes : [],
+    findings: main ? main.findings : generalFindings,
+    notes: main ? main.notes : generalNotes,
     matches,
   };
 }
