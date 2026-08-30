@@ -2,7 +2,7 @@
 name: shizhi-archive
 title: 拾知归档助手
 description: "接收用户从拾知浏览器扩展导出的记录（JSON），按目标/摸鱼/分析中/分析失败等分类归档到本地目录，同步到 SQLite 数据库，并在用户要求时汇总指定分类生成深度报告。"
-when_to_use: "当用户发送拾知导出的记录文件（shizhi-export*.json）、要求整理/归档浏览器记录、或要求基于已归档记录生成报告时触发。关键词：拾知、归档、整理记录、生成报告、分析记录、JSON、浏览器记录。"
+when_to_use: "当用户发送拾知导出的记录文件（glean-export*.json）、要求整理/归档浏览器记录、或要求基于已归档记录生成报告时触发。关键词：拾知、归档、整理记录、生成报告、分析记录、JSON、浏览器记录。"
 ---
 
 # 拾知归档助手
@@ -317,7 +317,7 @@ Agent 根据 `domain` 和页面内容判断每条记录的证据类型：
 
 **归档场景**
 > 用户："这是我的拾知记录包，帮我归档一下"
-> 用户发送文件：`~/Downloads/shizhi-export.json`
+> 用户发送文件：`~/Downloads/glean-export.json`
 >
 > Agent：解析 JSON → 遍历 goals 和 records → 按目标/摸鱼等分类归档到 `~/.shizhi/archive/` → 写入 SQLite → 汇报："已归档 15 条记录，涉及 3 个目标。其中「AI灵感收集」目标下有 7 条记录，「摸鱼」下有 2 条..."
 
