@@ -998,7 +998,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = goalId ? "shizhi-" + goalId + ".json" : "shizhi-export.json";
+    a.download = goalId ? "glean-" + goalId + ".json" : "glean-export.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     this.exportOpen = false;
