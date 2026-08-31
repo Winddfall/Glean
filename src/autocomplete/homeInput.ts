@@ -4,7 +4,7 @@
 
 import { backoffMs, esc } from "../core/utils.js";
 import { K } from "../core/constants.js";
-import { Store } from "../store.js";
+import { Store, settings } from "../store.js";
 import type { Profile } from "../types.js";
 import { CompletionEngine, normalizeCompletionBoundary } from "./engine.js";
 
@@ -85,6 +85,7 @@ class HomeInputAutocomplete {
     const initial = findEditor();
     if (initial) this.setInputElement(initial);
     document.addEventListener("input", this.handleGlobalInput, true);
+    window.addEventListener("shizhi-settings-changed", this.handleSettingsChanged);
     this.observeInputDom();
     this.pollTimer = window.setInterval(() => {
       const live = findEditor();
@@ -159,7 +160,17 @@ class HomeInputAutocomplete {
     this.inputElement = null;
   }
 
+  private handleSettingsChanged = (): void => {
+    if (!settings().autocomplete) {
+      this.generation++;
+      this.clearDebounce();
+      this.pending = null;
+      this.hideGhost();
+    }
+  };
+
   private handleGlobalInput = (event: Event): void => {
+    if (!settings().autocomplete) return;
     const live = findEditor();
     if (!live || !(event.target instanceof Node) || !live.contains(event.target)) return;
     if (live !== this.inputElement) this.setInputElement(live);
@@ -179,6 +190,7 @@ class HomeInputAutocomplete {
   };
 
   private handleKeydown = (event: KeyboardEvent): void => {
+    if (!settings().autocomplete) return;
     if (event.key === "Tab" && this.currentCompletion) {
       event.preventDefault();
       this.acceptCompletion();
@@ -199,7 +211,7 @@ class HomeInputAutocomplete {
   };
 
   private async requestCompletion(text: string, generation: number): Promise<void> {
-    if (generation !== this.generation) return;
+    if (!settings().autocomplete || generation !== this.generation) return;
     if (this.inFlight) {
       this.pending = { text, generation };
       return;
@@ -238,7 +250,7 @@ class HomeInputAutocomplete {
   }
 
   private showGhost(inputText: string, completion: string): void {
-    if (!this.ghostElement || !this.inputElement || !completion || !this.isLiveInput(inputText)) {
+    if (!settings().autocomplete || !this.ghostElement || !this.inputElement || !completion || !this.isLiveInput(inputText)) {
       this.hideGhost();
       return;
     }

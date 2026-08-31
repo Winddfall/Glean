@@ -73,9 +73,6 @@ function resolveLinkedUrl(raw: string): { url: string; usedTemplate: boolean } {
   return { url, usedTemplate: false };
 }
 
-// 当前聚焦的宿主页面输入框（用于输入自动补全）
-let focusedInput: HTMLInputElement | HTMLTextAreaElement | null = null;
-
 function fmtDate(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
@@ -203,7 +200,6 @@ export const Panel = {
     themeColorPop: HTMLDivElement;
     todoPop: HTMLDivElement;
     ctxmenu: HTMLDivElement;
-    autocomplete: HTMLDivElement;
     tabBar: HTMLDivElement;
     tabs: HTMLButtonElement[];
     themeBtn: HTMLButtonElement;
@@ -238,7 +234,6 @@ export const Panel = {
       themeColorPop: shadow.querySelector('[data-role="theme-color-pop"]')!,
       todoPop: shadow.querySelector('[data-role="todo-pop"]')!,
       ctxmenu: shadow.querySelector('[data-role="ctxmenu"]')!,
-      autocomplete: shadow.querySelector('[data-role="autocomplete"]')!,
       tabBar: shadow.querySelector(".sz-tabs")!,
       tabs: Array.from(shadow.querySelectorAll(".sz-tab")),
       themeBtn: shadow.querySelector('[data-act="theme"]')!,
@@ -271,15 +266,6 @@ export const Panel = {
       if (this.els.ctxmenu && this.els.ctxmenu.classList.contains("open")) this.hideCtxMenu();
       // 点击扩展 UI 之外的区域时收起待办弹层（标准 popover 行为）
       if (this.todoOpen && this.els.dock && !(e.composedPath && e.composedPath().includes(this.els.dock))) { this.todoOpen = false; this.renderTodo(); }
-    });
-
-    // 输入自动补全：监听宿主页面输入框聚焦 + Ctrl+. 触发
-    document.addEventListener("focusin", (e) => this.onFocusIn(e as FocusEvent));
-    document.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === ".") {
-        this.completeInput();
-        e.preventDefault();
-      }
     });
 
     // 目标树拖拽排序
@@ -396,13 +382,19 @@ export const Panel = {
       const id = kind + ":" + (btn.dataset.idx || "0");
       this.askDelete("profile", id, undefined, "删除这条画像信息？");
     }
-    else if (act === "ac-complete") this.completeInput();
     else if (act === "ask-dsh") this.askSelectionToDsh();
     else if (act === "toggle-ask-dsh") {
       const askDsh = !settings().askDsh;
       saveSettings({ askDsh });
       btn.classList.toggle("on", askDsh);
       btn.setAttribute("aria-checked", String(askDsh));
+    }
+    else if (act === "toggle-autocomplete") {
+      const autocomplete = !settings().autocomplete;
+      saveSettings({ autocomplete });
+      btn.classList.toggle("on", autocomplete);
+      btn.setAttribute("aria-checked", String(autocomplete));
+      window.dispatchEvent(new Event("shizhi-settings-changed"));
     }
   },
   onInput(e: Event): void {
@@ -1144,68 +1136,6 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     this.renderProfile();
   },
 
-  // ---- 输入自动补全 ----
-  onFocusIn(e: FocusEvent): void {
-    const t = e.target as HTMLElement;
-    if (!t) return;
-    // 忽略拾知自身 shadow 内元素
-    if (e.composedPath().some((n) => n === this.root)) { this.hideAutocomplete(); return; }
-    const tag = t.tagName;
-    if (tag !== "INPUT" && tag !== "TEXTAREA") { this.hideAutocomplete(); return; }
-    const el = t as HTMLInputElement | HTMLTextAreaElement;
-    if (el.type === "password" || el.type === "hidden" || el.readOnly || el.disabled) { this.hideAutocomplete(); return; }
-    focusedInput = el;
-    this.showAutocomplete(el);
-  },
-  showAutocomplete(el: HTMLInputElement | HTMLTextAreaElement): void {
-    const rect = el.getBoundingClientRect();
-    const ac = this.els.autocomplete;
-    if (!ac) return;
-    ac.innerHTML = `<button class="sz-ac-tip" data-act="ac-complete">${ICONS.bulb} AI 补全（Ctrl+.）</button>`;
-    ac.classList.add("open");
-    ac.style.left = rect.left + "px";
-    ac.style.top = (rect.bottom + 4) + "px";
-  },
-  hideAutocomplete(): void {
-    this.els.autocomplete.classList.remove("open");
-  },
-  async completeInput(): Promise<void> {
-    const el = focusedInput;
-    this.hideAutocomplete();
-    if (!el || !document.contains(el)) {
-      this.toast("请先聚焦页面上的输入框", "idle");
-      return;
-    }
-    const bridge = window.LLMBridge;
-    if (!bridge) {
-      this.toast("AI 暂不可用（未检测到 LLMBridge）。", "err");
-      return;
-    }
-    const existing = el.value || (el as HTMLTextAreaElement).textContent || "";
-    if (!existing.trim()) {
-      this.toast("输入框内容为空，请先输入开头几个字。", "idle");
-      return;
-    }
-    this.toast("AI 正在补全…", "idle");
-    try {
-      const raw = await bridge.chat(
-        "请为输入框补全内容，直接给出补全后的完整文本（不要解释，不要引号包裹）。" +
-        "结合页面标题「" + document.title + "」理解上下文。\n\n当前输入：" + existing,
-        undefined
-      );
-      const text = String(raw).trim();
-      if (!text) { this.toast("AI 未产出内容，请重试。", "idle"); return; }
-      el.value = text;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      el.focus();
-      el.setSelectionRange(text.length, text.length);
-      this.toast("已补全，可继续编辑。", "ok");
-    } catch (err) {
-      this.toast("补全失败：" + String(err), "err");
-    }
-  },
-
   // ---- 右键「问问 DeepSeek Harness」 ----
   onContextMenu(e: MouseEvent): void {
     if (!settings().askDsh) { this.hideCtxMenu(); return; }
@@ -1896,6 +1826,13 @@ this.els.body.innerHTML = `
         <input class="sz-input" data-role="dsh-url" value="${esc(s.dshUrl)}" placeholder="${esc(DSH_URL)}" aria-label="DeepSeek Harness 服务地址">
       </div>
       <button class="sz-switch ${s.askDsh ? "on" : ""}" data-act="toggle-ask-dsh" role="switch" aria-checked="${s.askDsh}" aria-label="问问 DeepSeek Harness"><span class="sz-switch-knob"></span></button>
+    </section>
+    <section class="sz-field sz-setting-card sz-switch-card">
+      <div class="sz-switch-text">
+        <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.sparkle}</span><strong>提示词自动补全</strong></div>
+        <span class="sz-switch-desc">在 Tabbit 首页输入提示词时，AI 会在末尾显示可接受的补全文字。</span>
+      </div>
+      <button class="sz-switch ${s.autocomplete ? "on" : ""}" data-act="toggle-autocomplete" role="switch" aria-checked="${s.autocomplete}" aria-label="提示词自动补全"><span class="sz-switch-knob"></span></button>
     </section>
     <section class="sz-field sz-setting-card">
       <div class="sz-card-heading"><span class="sz-card-icon">${ICONS.sparkle}</span><strong>记录分析提示词</strong></div>

@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
   linkedUrl: "",         // 关联网址
   analysisPrompt: "",    // 分析提示词（空 = 预设）
   askDsh: true,          // 右键「问问 DeepSeek Harness」默认开启
+  autocomplete: true,    // Tabbit 首页提示词自动补全默认开启
   dshUrl: DSH_URL,      // DeepSeek Harness 服务地址
 };
 
