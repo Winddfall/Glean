@@ -7,8 +7,27 @@ import { hookHistory, onLocationChange } from "./watcher.js";
 import { pumpQueue } from "./queue.js";
 import { initDshAskReceiver } from "./dsh.js";
 import { initTabbitAutocomplete } from "./autocomplete/homeInput.js";
+import { normalizeMatches, syncRecordPrimaryMatch } from "./core/matches.js";
+import type { BrowseRecord } from "./types.js";
+
+function migrateStoredRecordMatches(): void {
+  const records = Store.read<BrowseRecord[]>(K.records, []);
+  let changed = false;
+  for (const record of records) {
+    if (!record.matches?.length) continue;
+    const previous = record.matches;
+    const normalized = normalizeMatches(previous);
+    const same = normalized.length === previous.length && normalized.every((match, index) => match === previous[index]);
+    if (same) continue;
+    record.matches = normalized;
+    if (record.category !== "pending" && record.category !== "error") syncRecordPrimaryMatch(record);
+    changed = true;
+  }
+  if (changed) Store.write(K.records, records);
+}
 
 function boot(): void {
+  migrateStoredRecordMatches();
   hookHistory();
   Panel.mount();
   addEventListener("storage", (e) => {

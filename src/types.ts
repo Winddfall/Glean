@@ -80,7 +80,7 @@ export interface BrowseRecord {
   relevance?: number; // 0-100，LLM 分析产出
   findings?: string[]; // 关键发现
   notes?: NoteEntry[]; // 提取笔记
-  matches?: MatchEntry[]; // 多分类结果（goal/task/subtask 各自分析）
+  matches?: MatchEntry[]; // 多目标分类结果；同一个 goalId 最多一条具体 task/subtask 路径
   excerpt?: string; // 分析失败时留存，供重试
 }
 
