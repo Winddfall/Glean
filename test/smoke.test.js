@@ -287,10 +287,17 @@ test("存储空间：仅统计拾知同源数据，可设置软上限并查看�
 
     const card = s.shadow.querySelector(".sz-storage-card");
     assert.ok(card, "设置页显示存储空间概览卡");
-    assert.strictEqual(s.shadow.querySelectorAll(".sz-setting-card").length, 4, "设置页其余区块全部使用统一卡片容器");
+    assert.strictEqual(s.shadow.querySelectorAll(".sz-setting-card").length, 5, "设置页其余区块全部使用统一卡片容器");
     assert.ok(card.textContent.includes("当前源数据"));
     assert.ok(card.textContent.includes("25 MB"), "默认软上限为 25 MB");
     assert.ok(!card.textContent.includes("2.0 MB"), "宿主网站自己的 localStorage 不计入拾知用量");
+
+    const autocompleteSwitch = s.shadow.querySelector('[data-act="toggle-autocomplete"]');
+    assert.ok(autocompleteSwitch, "设置页显示自动补全开关");
+    assert.strictEqual(autocompleteSwitch.getAttribute("aria-checked"), "true", "自动补全默认开启");
+    autocompleteSwitch.click();
+    assert.strictEqual(autocompleteSwitch.getAttribute("aria-checked"), "false", "自动补全可关闭");
+    assert.strictEqual(JSON.parse(s.window.localStorage.getItem("shizhi.settings")).autocomplete, false, "自动补全状态已保存");
 
     const tabBar = s.shadow.querySelector(".sz-tabs");
     assert.strictEqual(tabBar.hidden, false, "设置页正常显示顶部标签栏");

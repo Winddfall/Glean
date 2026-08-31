@@ -6,6 +6,7 @@ import { Panel } from "./panel/panel.js";
 import { hookHistory, onLocationChange } from "./watcher.js";
 import { pumpQueue } from "./queue.js";
 import { initDshAskReceiver } from "./dsh.js";
+import { initTabbitAutocomplete } from "./autocomplete/homeInput.js";
 
 function boot(): void {
   hookHistory();
@@ -27,10 +28,14 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     window.__shizhiLoaded = true;
     initDshAskReceiver();
     if (typeof LLMBridge !== "undefined") {
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", boot, { once: true });
-      } else {
+      const start = () => {
         boot();
+        initTabbitAutocomplete();
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", start, { once: true });
+      } else {
+        start();
       }
     }
   }
