@@ -81,7 +81,7 @@ async function analyze(rec: BrowseRecord, item: QueueItem): Promise<boolean> {
   rec.category = res.relevant && res.goalId ? "goal:" + res.goalId : "slacking";
   const g = goals.find((x) => x.id === res.goalId);
   if (res.relevant && g) {
-    const extra = res.matches.length > 1 ? "（共命中 " + res.matches.length + " 个分类）" : "";
+    const extra = res.matches.length > 1 ? "（共关联 " + res.matches.length + " 个目标）" : "";
     Panel.toast("已归档至：" + g.title + extra, "ok");
     // 一条记录可命中多个目标：逐目标同步 todo、更新 coverage 与搜索词
     const matchedGoalIds = [...new Set(res.matches.map((m) => m.goalId).filter(Boolean))];
@@ -181,12 +181,11 @@ function syncTodos(goal: Goal): void {
 }
 
 function updateTodoCoverage(goal: Goal, rec: BrowseRecord): void {
-  if (!rec.matches?.length) return;
-  for (const m of rec.matches) {
-    if (!m.taskId) continue;
-    const todo = goal.todos?.find((t) => t.taskId === m.taskId);
-    if (!todo) continue;
-    const inc = (m.relevance / 100) * 0.15; // 每次命中最多增加 15%
+  const match = rec.matches?.find((m) => m.goalId === goal.id);
+  if (!match?.taskId) return;
+  const todo = goal.todos?.find((t) => t.taskId === match.taskId);
+  if (todo) {
+    const inc = (match.relevance / 100) * 0.15; // 每次命中最多增加 15%
     todo.coverage = Math.min(1, (todo.coverage || 0) + inc);
     // coverage 达到 90% 自动标记为完成，让后续搜索词替补给下一个 todo
     if (todo.coverage >= 0.9) todo.status = "done";

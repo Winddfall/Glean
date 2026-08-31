@@ -16,7 +16,7 @@ const PAGE_URL = "https://liaoxuefeng.com/books/python/introduction/index.html";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function bootScenario({ goalTitle, llmResult, profileWorkPageCount = 0, profileResult }) {
+async function bootScenario({ goalTitle, llmResult, profileWorkPageCount = 0, profileResult, goals: seededGoals, initialRecords }) {
   const dom = new JSDOM(HTML, {
     url: PAGE_URL,
     runScripts: "outside-only",
@@ -28,9 +28,10 @@ async function bootScenario({ goalTitle, llmResult, profileWorkPageCount = 0, pr
   // 加速定时器 + 预置工作模式与目标
   window.localStorage.setItem("shizhi.settings", JSON.stringify({ settleMs: 10, dwellMs: 10, queueGapMs: 10 }));
   window.localStorage.setItem("shizhi.state", JSON.stringify({ workMode: true, activeSince: Date.now() }));
-  window.localStorage.setItem("shizhi.goals", JSON.stringify([
+  window.localStorage.setItem("shizhi.goals", JSON.stringify(seededGoals || [
     { id: "g_py", title: goalTitle, status: "active", createdAt: Date.now(), todos: [] },
   ]));
+  if (initialRecords) window.localStorage.setItem("shizhi.records", JSON.stringify(initialRecords));
   if (profileWorkPageCount > 0) {
     window.localStorage.setItem("shizhi.profileWorkPageCount", JSON.stringify(profileWorkPageCount));
   }
@@ -47,8 +48,9 @@ async function bootScenario({ goalTitle, llmResult, profileWorkPageCount = 0, pr
   const shadow = document.getElementById("shizhi-host")?.shadowRoot;
   const records = JSON.parse(window.localStorage.getItem("shizhi.records") || "[]");
   const queue = JSON.parse(window.localStorage.getItem("shizhi.queue") || "[]");
+  const goals = JSON.parse(window.localStorage.getItem("shizhi.goals") || "[]");
   const close = () => window.close();
-  return { window, document, shadow, records, queue, calls, close };
+  return { window, document, shadow, records, queue, goals, calls, close };
 }
 
 test("F1 归档路径：相关网页自动记录并归档至目标", async () => {
@@ -97,6 +99,113 @@ test("F1 归档路径：相关网页自动记录并归档至目标", async () =>
     assert.ok(emptyProfile, "没有画像条目时显示画像功能说明");
     assert.ok(emptyProfile.textContent.includes("还没有用户画像"));
     assert.ok(emptyProfile.textContent.includes("每浏览 5 个工作网页，画像会自动更新"));
+  } finally {
+    s.close();
+  }
+});
+
+test("多目标归档：同一一级目标只保留一个子目标路径", async () => {
+  const goals = [
+    {
+      id: "g1", title: "产品定价", status: "active", createdAt: Date.now(),
+      tasks: [
+        { id: "t1", title: "个人版", subtasks: [] },
+        { id: "t2", title: "企业版", subtasks: [{ id: "s2", title: "采购条款" }] },
+      ],
+      todos: [
+        { id: "todo1", text: "个人版", taskId: "t1", contrib: {}, coverage: 0, status: "open", manual: false },
+        { id: "todo2", text: "企业版", taskId: "t2", contrib: {}, coverage: 0, status: "open", manual: false },
+      ],
+    },
+    {
+      id: "g2", title: "竞品分析", status: "active", createdAt: Date.now(),
+      tasks: [{ id: "t3", title: "商业模式", subtasks: [] }],
+      todos: [{ id: "todo3", text: "商业模式", taskId: "t3", contrib: {}, coverage: 0, status: "open", manual: false }],
+    },
+  ];
+  const s = await bootScenario({
+    goals,
+    llmResult: {
+      summary: "同时涉及产品定价和竞品商业模式",
+      keywords: ["Python", "定价"],
+      matches: [
+        { goalId: "g1", taskId: null, subtaskId: null, relevance: 99, reasoning: "过于宽泛" },
+        { goalId: "g1", taskId: "t1", subtaskId: null, relevance: 70, reasoning: "涉及个人版" },
+        { goalId: "g1", taskId: "t2", subtaskId: "s2", relevance: 90, reasoning: "主要涉及企业采购", findings: ["企业版发现"] },
+        { goalId: "g2", taskId: "t3", subtaskId: null, relevance: 80, reasoning: "可用于竞品分析", findings: ["竞品发现"] },
+      ],
+    },
+  });
+  try {
+    const record = s.records[0];
+    assert.strictEqual(record.matches.length, 2, "两个一级目标各保留一条 match");
+    assert.deepStrictEqual(record.matches.map((match) => match.goalId), ["g1", "g2"]);
+    assert.strictEqual(record.matches[0].taskId, "t2", "同一目标只保留相关度最高的具体任务");
+    assert.strictEqual(record.matches[0].subtaskId, "s2");
+    assert.ok(s.calls[0].includes("同一个 goalId 在 matches 中最多出现一次"), "提示词声明每目标唯一约束");
+    assert.ok(s.shadow.querySelector('.sz-toast').textContent.includes("共关联 2 个目标"));
+
+    const g1 = s.goals.find((goal) => goal.id === "g1");
+    const g2 = s.goals.find((goal) => goal.id === "g2");
+    assert.strictEqual(g1.todos.find((todo) => todo.taskId === "t1").coverage, 0, "未选中的兄弟任务不增加 coverage");
+    assert.strictEqual(g1.todos.find((todo) => todo.taskId === "t2").coverage, 0.135);
+    assert.strictEqual(g2.todos.find((todo) => todo.taskId === "t3").coverage, 0.12);
+
+    s.shadow.querySelector('[data-tab="records"]').click();
+    assert.strictEqual(s.shadow.querySelectorAll('[data-match-goal="g1"]').length, 1, "一级目标内只展示一次网页");
+    assert.strictEqual(s.shadow.querySelectorAll('[data-match-goal="g2"]').length, 1, "跨一级目标仍各展示一次");
+
+    let exportedBlob;
+    s.window.URL.createObjectURL = (blob) => { exportedBlob = blob; return "blob:test"; };
+    s.window.URL.revokeObjectURL = () => {};
+    s.window.HTMLAnchorElement.prototype.click = () => {};
+    s.shadow.querySelector('[data-act="export"]').click();
+    const exportSelect = s.shadow.querySelector('[data-role="export-select"]');
+    exportSelect.value = "g2";
+    s.shadow.querySelector('[data-act="export-selected"]').click();
+    const exportedText = await new Promise((resolve, reject) => {
+      const reader = new s.window.FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(exportedBlob);
+    });
+    const exported = JSON.parse(exportedText);
+    const exportedRecord = exported.records["goal:g2"][0];
+    assert.strictEqual(exportedRecord.matches.length, 1, "按目标导出只保留该目标关系");
+    assert.strictEqual(exportedRecord.matches[0].goalId, "g2");
+
+    s.shadow.querySelector('[data-match-goal="g1"] [data-act="del-record"]').click();
+    s.shadow.querySelector('[data-match-goal="g1"] [data-act="confirm-delete"]').click();
+    const remaining = JSON.parse(s.window.localStorage.getItem("shizhi.records"));
+    assert.strictEqual(remaining.length, 1, "删除一个目标关系不会删除仍属于其他目标的网页");
+    assert.deepStrictEqual(remaining[0].matches.map((match) => match.goalId), ["g2"]);
+    assert.strictEqual(remaining[0].category, "goal:g2");
+  } finally {
+    s.close();
+  }
+});
+
+test("历史迁移：同一目标的重复 match 在启动时收敛为一条", async () => {
+  const initialRecords = [{
+    id: "r_old", url: PAGE_URL, origin: "https://liaoxuefeng.com", title: "旧记录", h1: "", meta: "",
+    capturedAt: Date.now(), excerptHash: "old", preview: "旧预览", category: "goal:g1", summary: "旧摘要", keywords: [],
+    relevance: 99, findings: ["宽泛发现"], notes: [],
+    matches: [
+      { goalId: "g1", taskId: null, subtaskId: null, relevance: 99, reasoning: "宽泛", findings: ["宽泛发现"], notes: [], keyQuotes: [] },
+      { goalId: "g1", taskId: "t2", subtaskId: null, relevance: 80, reasoning: "具体", findings: ["具体发现"], notes: [], keyQuotes: [] },
+    ],
+  }];
+  const s = await bootScenario({
+    goals: [{ id: "g1", title: "旧目标", status: "active", createdAt: Date.now(), tasks: [{ id: "t2", title: "具体任务", subtasks: [] }], todos: [] }],
+    initialRecords,
+    llmResult: { matches: [] },
+  });
+  try {
+    assert.strictEqual(s.calls.length, 0, "已有 URL 不会重新分析");
+    assert.strictEqual(s.records[0].matches.length, 1);
+    assert.strictEqual(s.records[0].matches[0].taskId, "t2", "历史重复优先保留具体任务路径");
+    assert.strictEqual(s.records[0].relevance, 80);
+    assert.deepStrictEqual(s.records[0].findings, ["具体发现"]);
   } finally {
     s.close();
   }

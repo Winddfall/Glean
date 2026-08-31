@@ -12,6 +12,7 @@ import {getState, settings, Store} from "../store.js";
 import {onLocationChange} from "../watcher.js";
 import {pumpQueue} from "../queue.js";
 import { PRESET_ANALYSIS_PROMPT } from "../core/prompt.js";
+import { syncRecordPrimaryMatch } from "../core/matches.js";
 import {
   STORAGE_SOFT_CAP_OPTIONS_MB,
   formatStorageBytes,
@@ -923,16 +924,15 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const queue = Store.read<QueueItem[]>(K.queue, []);
     const isMatch = key.includes(":");
-    const [rid, gid, tid, sid] = isMatch ? key.split(":") : [key, "", "", ""];
+    const [rid, gid] = isMatch ? key.split(":") : [key, ""];
     const rec = recs.find((r) => r.id === rid);
     if (!rec) return;
     let deletedWhole = false;
     if (isMatch) {
       if (!rec.matches) return;
-      rec.matches = rec.matches.filter((m) => !(m.goalId === gid && (m.taskId || "") === tid && (m.subtaskId || "") === sid));
+      rec.matches = rec.matches.filter((m) => m.goalId !== gid);
       if (rec.matches.length) {
-        const top = rec.matches.sort((a, b) => b.relevance - a.relevance)[0];
-        rec.category = "goal:" + top.goalId;
+        syncRecordPrimaryMatch(rec);
       } else {
         deletedWhole = true;
       }
@@ -979,7 +979,22 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const recs = Store.read<BrowseRecord[]>(K.records, []);
     const goals = Store.read<Goal[]>(K.goals, []);
     let picked = recs;
-    if (goalId) picked = recs.filter((r) => r.category === "goal:" + goalId);
+    if (goalId) {
+      picked = recs.flatMap((r) => {
+        const match = r.matches?.find((m) => m.goalId === goalId);
+        if (match) {
+          return [{
+            ...r,
+            category: "goal:" + goalId,
+            relevance: match.relevance,
+            findings: match.findings,
+            notes: match.notes,
+            matches: [match],
+          }];
+        }
+        return r.category === "goal:" + goalId ? [r] : [];
+      });
+    }
     const groups: Record<string, BrowseRecord[]> = {};
     for (const r of picked) {
       const key = r.category || "other";
@@ -1001,7 +1016,18 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
     const label = goalId ? "该目标下的记录" : "全部数据（目标、记录、队列）";
     if (!confirm("清空" + label + "？此操作不可恢复。")) return;
     if (goalId) {
-      Store.write(K.records, Store.read<BrowseRecord[]>(K.records, []).filter((r) => r.category !== "goal:" + goalId));
+      const kept: BrowseRecord[] = [];
+      for (const record of Store.read<BrowseRecord[]>(K.records, [])) {
+        if (record.matches?.some((match) => match.goalId === goalId)) {
+          record.matches = record.matches.filter((match) => match.goalId !== goalId);
+          if (!record.matches.length) continue;
+          syncRecordPrimaryMatch(record);
+          kept.push(record);
+        } else if (record.category !== "goal:" + goalId) {
+          kept.push(record);
+        }
+      }
+      Store.write(K.records, kept);
     } else {
       Object.values(K).forEach((k) => Store.del(k));
     }
@@ -1107,7 +1133,7 @@ const title = String(obj.title || text).trim().slice(0, 40) || text.slice(0, 40)
       "4. 右下角待办气泡会给出下一步建议，点击搜索词可一键跳转到关联网址搜索。\n" +
       "5. 点击目标里的任意分类，可跳转到该分类下的记录。\n" +
       "6. 在「设置」里可编辑分析提示词、清空记录、填写关联网址。\n" +
-      "   提示词编辑须知：自定义提示词必须保留 {{GOALS}}、{{URL}}、{{TITLE}}、{{EXCERPT}} 等占位符，以及「只输出 JSON + matches 数组（每个元素含 goalId/taskId/subtaskId/relevance/findings/notes/keyQuotes）」的格式约定，否则分析会失败。\n" +
+      "   提示词编辑须知：自定义提示词必须保留 {{GOALS}}、{{URL}}、{{TITLE}}、{{EXCERPT}} 等占位符，以及「只输出 JSON + matches 数组（每个一级目标最多一条，每个元素含 goalId/taskId/subtaskId/relevance/findings/notes/keyQuotes）」的格式约定，否则分析会失败。\n" +
       "7. 底部「关联网址」框只需填站点名或网址，点旁边的 ✦ 图标，AI 会自动补全该站点的搜索参数，之后点搜索词即可直达结果页。\n\n" +
       "数据说明：拾知的记录保存在浏览器本地，按同源策略隔离，每个站点只能查看自己域下的记录。如需跨源汇总，请分别在各站点导出记录后，下载配套 skill 辅助本地 Agent 分析。\n\n" +
       "温馨提示：AI 分析可能存在偏差，重要结论请自行核对原始网页。拾知的所有记录都保存在本地浏览器，不会上传。"
